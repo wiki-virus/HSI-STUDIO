@@ -108,11 +108,11 @@ export default function Toolbar({ onSave }) {
       {/* Right side controls */}
       <div className="toolbar-group">
         <button
-          className="toolbar-btn"
+          className="toolbar-btn toolbar-btn-text"
           onClick={onSave}
           title="Save / Export (Ctrl+S)"
         >
-          <Save size={18} />
+          <Save size={16} /> Save
         </button>
 
         <div className="toolbar-divider" />

@@ -5,7 +5,7 @@ import Sidebar from '../components/Layout/Sidebar'
 import StatusBar from '../components/Layout/StatusBar'
 import DatacubeViewer from '../components/Viewer/DatacubeViewer'
 import SpectralPlot from '../components/Spectral/SpectralPlot'
-import SaveDialog from '../components/Export/SaveDialog'
+import ExportPane from '../components/Export/ExportPane'
 import Timeline from '../components/Layout/Timeline'
 
 /**
@@ -45,7 +45,7 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
   const viewerMaskRef = useRef(null)
 
   // ─── Save dialog state ───
-  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [showExportPane, setShowExportPane] = useState(false)
 
   // ─── Crop state ───
   const [cropRegion, setCropRegion] = useState(null) // { x, y, w, h } or null
@@ -211,7 +211,7 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault()
-        setShowSaveDialog(true)
+        setShowExportPane(true)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -250,7 +250,7 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
 
   return (
     <div className="app-layout">
-      <Toolbar onSave={() => setShowSaveDialog(true)} />
+      <Toolbar onSave={() => setShowExportPane(true)} />
 
       <div className="app-main">
         <Sidebar />
@@ -344,18 +344,19 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
             </>
           )}
         </div>
+
+        {/* Export Pane (Right Sidebar) */}
+        {showExportPane && (
+          <ExportPane
+            onClose={() => setShowExportPane(false)}
+            workerRef={workerRef}
+            canvasRef={viewerCanvasRef}
+            maskRef={viewerMaskRef}
+          />
+        )}
       </div>
 
       <StatusBar pixelValue={pixelValue} />
-
-      <SaveDialog
-        isOpen={showSaveDialog}
-        onClose={() => setShowSaveDialog(false)}
-        workerRef={workerRef}
-        canvasRef={viewerCanvasRef}
-        maskRef={viewerMaskRef}
-        inputFormat={inputFormat}
-      />
     </div>
   )
 }
