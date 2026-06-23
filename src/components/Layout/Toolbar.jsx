@@ -1,7 +1,7 @@
 import useAppStore from '../../stores/useAppStore'
 import { 
   Layers, Palette, MousePointer2, Crop, Paintbrush, 
-  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, Upload 
+  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, Upload, Wand2
 } from 'lucide-react'
 
 export default function Toolbar({ onSave }) {
@@ -97,7 +97,7 @@ export default function Toolbar({ onSave }) {
           <Paintbrush size={16} /> Draw
         </button>
         
-        {['brush', 'eraser', 'polygon', 'lasso'].includes(annotationMode) && (
+        {['brush', 'eraser', 'polygon', 'lasso', 'wand'].includes(annotationMode) && (
           <>
             <button
               className={`toolbar-btn ${annotationMode === 'eraser' ? 'active' : ''}`}
@@ -105,6 +105,13 @@ export default function Toolbar({ onSave }) {
               title="Eraser Tool"
             >
               <Eraser size={18} />
+            </button>
+            <button
+              className={`toolbar-btn ${annotationMode === 'wand' ? 'active' : ''}`}
+              onClick={() => setAnnotationMode('wand')}
+              title="Magic Wand"
+            >
+              <Wand2 size={18} />
             </button>
             <button
               className={`toolbar-btn ${annotationMode === 'polygon' ? 'active' : ''}`}

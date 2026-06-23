@@ -68,19 +68,24 @@ const useAppStore = create((set, get) => ({
   // 4. Annotation state
   // -----------------------------------------------------------------------
   /** Current annotation tool mode */
-  annotationMode: 'view', // 'view' | 'brush' | 'eraser' | 'rectangle' | 'polygon' | 'lasso'
+  annotationMode: 'view', // 'view' | 'brush' | 'eraser' | 'polygon' | 'lasso' | 'wand'
   /** Brush diameter in pixels */
   brushSize: 10,
-  /** Brush edge hardness (0–100) */
-  brushHardness: 100,
-  /** Brush stroke opacity (0.0–1.0) */
-  brushOpacity: 1.0,
+  /** Wand spectral similarity tolerance (radians for SAM) */
+  wandTolerance: 0.1,
   /** Whether the annotation mask overlay is visible */
   showMaskOverlay: true,
   /** Opacity of the mask overlay (0.0–1.0) */
   maskOpacity: 0.4,
-  /** Color used to render the mask overlay */
-  maskColor: '#ff4444',
+
+  /** ML Classes for discrete multi-class annotation */
+  classes: [
+    { id: 1, name: 'Class 1', color: '#ff4444' },
+    { id: 2, name: 'Class 2', color: '#44ff44' },
+    { id: 3, name: 'Class 3', color: '#4444ff' },
+  ],
+  /** The currently selected class ID for drawing/wand */
+  activeClassId: 1,
 
   // -----------------------------------------------------------------------
   // 5. Zoom / Pan
@@ -158,11 +163,19 @@ const useAppStore = create((set, get) => ({
   // --- Annotation actions ---
   setAnnotationMode: (mode) => set({ annotationMode: mode }),
   setBrushSize:      (size) => set({ brushSize: size }),
-  setBrushHardness:  (hardness) => set({ brushHardness: hardness }),
-  setBrushOpacity:   (opacity) => set({ brushOpacity: opacity }),
+  setWandTolerance:  (tolerance) => set({ wandTolerance: tolerance }),
   setShowMaskOverlay:(visible) => set({ showMaskOverlay: visible }),
   setMaskOpacity:    (opacity) => set({ maskOpacity: opacity }),
-  setMaskColor:      (color) => set({ maskColor: color }),
+
+  setActiveClassId:  (id) => set({ activeClassId: id }),
+  addClass:          (newClass) => set((s) => ({ classes: [...s.classes, newClass] })),
+  updateClass:       (id, updates) => set((s) => ({
+    classes: s.classes.map(c => c.id === id ? { ...c, ...updates } : c)
+  })),
+  removeClass:       (id) => set((s) => ({
+    classes: s.classes.filter(c => c.id !== id),
+    activeClassId: s.activeClassId === id ? (s.classes.find(c => c.id !== id)?.id || 1) : s.activeClassId
+  })),
 
   // --- Zoom / Pan actions ---
   setZoom:      (zoom) => set({ zoom }),

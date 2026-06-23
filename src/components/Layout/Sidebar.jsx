@@ -28,12 +28,17 @@ export default function Sidebar({ onRequestBand, onRequestRGB }) {
   const annotationMode = useAppStore(s => s.annotationMode)
   const brushSize = useAppStore(s => s.brushSize)
   const setBrushSize = useAppStore(s => s.setBrushSize)
-  const brushHardness = useAppStore(s => s.brushHardness)
-  const setBrushHardness = useAppStore(s => s.setBrushHardness)
-  const brushOpacity = useAppStore(s => s.brushOpacity)
-  const setBrushOpacity = useAppStore(s => s.setBrushOpacity)
-  const maskColor = useAppStore(s => s.maskColor)
-  const setMaskColor = useAppStore(s => s.setMaskColor)
+  
+  const wandTolerance = useAppStore(s => s.wandTolerance)
+  const setWandTolerance = useAppStore(s => s.setWandTolerance)
+
+  const classes = useAppStore(s => s.classes)
+  const activeClassId = useAppStore(s => s.activeClassId)
+  const setActiveClassId = useAppStore(s => s.setActiveClassId)
+  const addClass = useAppStore(s => s.addClass)
+  const updateClass = useAppStore(s => s.updateClass)
+  const removeClass = useAppStore(s => s.removeClass)
+
   const maskOpacity = useAppStore(s => s.maskOpacity)
   const setMaskOpacity = useAppStore(s => s.setMaskOpacity)
   const showMaskOverlay = useAppStore(s => s.showMaskOverlay)
@@ -198,66 +203,132 @@ export default function Sidebar({ onRequestBand, onRequestRGB }) {
         <div className="sidebar-section">
           <div className="sidebar-section-title">Annotation</div>
 
-          <div className="control-row">
-            <span className="control-label">Brush Size</span>
-            <span className="control-value">{brushSize}px</span>
-          </div>
-          <input
-            type="range"
-            min={1}
-            max={100}
-            value={brushSize}
-            onChange={(e) => setBrushSize(parseInt(e.target.value, 10))}
-          />
-
-          <div className="control-row" style={{ marginTop: 'var(--space-sm)' }}>
-            <span className="control-label">Gradient Brush</span>
-            <label className="toggle">
+          {['brush', 'eraser'].includes(annotationMode) && (
+            <>
+              <div className="control-row">
+                <span className="control-label">Brush Size</span>
+                <span className="control-value">{brushSize}px</span>
+              </div>
               <input
-                type="checkbox"
-                checked={brushHardness < 100}
-                onChange={(e) => setBrushHardness(e.target.checked ? 0 : 100)}
+                type="range"
+                min={1}
+                max={100}
+                value={brushSize}
+                onChange={(e) => setBrushSize(parseInt(e.target.value, 10))}
               />
-              <div className="toggle-track" />
-              <div className="toggle-thumb" />
-            </label>
-          </div>
+            </>
+          )}
 
-          <div className="control-row" style={{ marginTop: 'var(--space-sm)' }}>
-            <span className="control-label">Opacity</span>
-            <span className="control-value">{(brushOpacity * 100).toFixed(0)}%</span>
+          {annotationMode === 'wand' && (
+            <>
+              <div className="control-row" style={{ marginTop: 'var(--space-sm)' }}>
+                <span className="control-label">Wand Tolerance</span>
+                <span className="control-value">{wandTolerance.toFixed(2)}</span>
+              </div>
+              <input
+                type="range"
+                min={0.01}
+                max={1.0}
+                step={0.01}
+                value={wandTolerance}
+                onChange={(e) => setWandTolerance(parseFloat(e.target.value))}
+              />
+            </>
+          )}
+          
+          <div className="sidebar-section-title" style={{ marginTop: 'var(--space-md)', fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)' }}>Classes</div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)', marginTop: 'var(--space-xs)' }}>
+            {classes.map(cls => (
+              <div 
+                key={cls.id} 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 'var(--space-xs)',
+                  padding: 'var(--space-xs)',
+                  background: activeClassId === cls.id ? 'var(--bg-active)' : 'var(--bg-tertiary)',
+                  border: activeClassId === cls.id ? 'var(--border-accent)' : 'var(--border-default)',
+                  borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer'
+                }}
+                onClick={() => setActiveClassId(cls.id)}
+              >
+                <input
+                  type="color"
+                  value={cls.color}
+                  onChange={(e) => updateClass(cls.id, { color: e.target.value })}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    padding: 0,
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                />
+                <input 
+                  type="text" 
+                  value={cls.name}
+                  onChange={(e) => updateClass(cls.id, { name: e.target.value })}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-primary)',
+                    fontSize: 'var(--font-sm)',
+                    outline: 'none'
+                  }}
+                />
+                {classes.length > 1 && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); removeClass(cls.id) }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      padding: '2px 6px',
+                      fontSize: 'var(--font-xs)'
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            
+            <button
+              onClick={() => {
+                const newId = Math.max(...classes.map(c => c.id), 0) + 1
+                addClass({ id: newId, name: `Class ${newId}`, color: '#ffffff' })
+                setActiveClassId(newId)
+              }}
+              style={{
+                marginTop: 'var(--space-xs)',
+                padding: 'var(--space-sm)',
+                background: 'var(--bg-tertiary)',
+                border: 'var(--border-default)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontSize: 'var(--font-sm)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center'
+              }}
+            >
+              + Add Class
+            </button>
           </div>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={brushOpacity}
-            onChange={(e) => setBrushOpacity(parseFloat(e.target.value))}
-          />
         </div>
       )}
 
       {/* ─── Mask Options (always visible) ─── */}
       <div className="sidebar-section">
         <div className="sidebar-section-title">Mask Overlay</div>
-        <div className="control-row" style={{ marginTop: 'var(--space-sm)' }}>
-          <span className="control-label">Mask Color</span>
-          <input
-            type="color"
-            value={maskColor}
-            onChange={(e) => setMaskColor(e.target.value)}
-            style={{
-              width: '28px',
-              height: '28px',
-              border: 'var(--border-default)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '0',
-              cursor: 'pointer',
-              background: 'transparent',
-            }}
-          />
-        </div>
 
         <div className="control-row" style={{ marginTop: 'var(--space-sm)' }}>
           <span className="control-label">Mask Opacity</span>

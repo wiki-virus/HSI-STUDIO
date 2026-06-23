@@ -114,6 +114,20 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
           break
         }
 
+        case 'wandCompleted': {
+          const { mask } = e.data
+          if (viewerMaskRef.current && mask) {
+            const activeClassId = useAppStore.getState().activeClassId
+            for (let i = 0; i < mask.length; i++) {
+              if (mask[i] === 1) {
+                viewerMaskRef.current[i] = activeClassId
+              }
+            }
+            setRenderTick(t => t + 1)
+          }
+          break
+        }
+
         default:
           break
       }
@@ -160,9 +174,23 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
   }, [rgbBands, viewMode, workerRef, currentFrame])
 
   // ─────────────────────────────────────────────────────────────
-  // Handle pixel click → request spectrum from worker
+  // Handle pixel click → request spectrum from worker or wand
   // ─────────────────────────────────────────────────────────────
   const handlePixelClick = useCallback((x, y) => {
+    const worker = workerRef.current
+    if (!worker) return
+
+    if (annotationMode === 'wand') {
+      const state = useAppStore.getState()
+      worker.postMessage({
+        type: 'magicWand',
+        x, y,
+        tolerance: state.wandTolerance,
+        frameIndex: currentFrame
+      })
+      return
+    }
+
     setSelectedPixel({ x, y })
 
     // Look up pixel value from the current band image
@@ -172,11 +200,8 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
     }
 
     // Request full spectrum at this pixel
-    const worker = workerRef.current
-    if (worker) {
-      worker.postMessage({ type: 'extractSpectrum', x, y, frameIndex: currentFrame })
-    }
-  }, [metadata, setSelectedPixel, workerRef, currentFrame])
+    worker.postMessage({ type: 'extractSpectrum', x, y, frameIndex: currentFrame })
+  }, [metadata, setSelectedPixel, workerRef, currentFrame, annotationMode])
 
   // ─────────────────────────────────────────────────────────────
   // Spectral panel drag-resize

@@ -87,12 +87,23 @@ export default function ExportPane({
           const ctx = maskCanvas.getContext('2d')
           const imageData = ctx.createImageData(samples, lines)
 
+          const classes = useAppStore.getState().classes
+          const classColors = { 0: { r: 0, g: 0, b: 0 } }
+          classes.forEach(c => {
+            classColors[c.id] = {
+              r: parseInt(c.color.slice(1, 3), 16),
+              g: parseInt(c.color.slice(3, 5), 16),
+              b: parseInt(c.color.slice(5, 7), 16)
+            }
+          })
+
           for (let i = 0; i < mask.length; i++) {
             const val = mask[i]
+            const color = classColors[val] || { r: 255, g: 255, b: 255 }
             const offset = i * 4
-            imageData.data[offset] = val
-            imageData.data[offset + 1] = val
-            imageData.data[offset + 2] = val
+            imageData.data[offset] = color.r
+            imageData.data[offset + 1] = color.g
+            imageData.data[offset + 2] = color.b
             imageData.data[offset + 3] = 255
           }
           ctx.putImageData(imageData, 0, 0)

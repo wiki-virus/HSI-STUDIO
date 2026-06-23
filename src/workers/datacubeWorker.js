@@ -48,6 +48,9 @@ self.onmessage = function (e) {
     case 'cropDatacube':
       handleCropDatacube(e.data);
       break;
+    case 'magicWand':
+      handleMagicWand(e.data);
+      break;
     default:
       self.postMessage({ type: 'error', message: `Unknown message type: ${type}` });
   }
@@ -498,4 +501,91 @@ function handleCropDatacube({ x, y, width, height }) {
     lines: newH,
     bands: bands,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Magic Wand: Spectral Angle Mapper (SAM)
+// ---------------------------------------------------------------------------
+function handleMagicWand({ x, y, tolerance, frameIndex = 0 }) {
+  const targetFrame = frames[frameIndex] || { datacube, meta };
+  if (!targetFrame || !targetFrame.datacube) {
+    self.postMessage({ type: 'error', message: 'No datacube loaded for wand.' });
+    return;
+  }
+  const currentCube = targetFrame.datacube;
+  const currentMeta = targetFrame.meta;
+  const { samples, lines, bands } = currentMeta;
+
+  if (x < 0 || x >= samples || y < 0 || y >= lines) return;
+
+  const { sampleStride, lineStride, bandStride } = getStrides(samples, lines, bands, currentMeta);
+
+  // 1. Extract reference spectrum at (x,y)
+  const refSpectrum = new Float32Array(bands);
+  let refNormSq = 0;
+  for (let b = 0; b < bands; b++) {
+    const val = currentCube[y * lineStride + x * sampleStride + b * bandStride];
+    refSpectrum[b] = val;
+    refNormSq += val * val;
+  }
+  const refNorm = Math.sqrt(refNormSq);
+
+  if (refNorm === 0) {
+    // Cannot compute angle with 0 vector
+    self.postMessage({ type: 'wandCompleted', mask: new Uint8Array(samples * lines) }, []);
+    return;
+  }
+
+  // 2. Perform BFS flood fill
+  const outMask = new Uint8Array(samples * lines);
+  const visited = new Uint8Array(samples * lines);
+  const queue = [[x, y]];
+  let head = 0;
+  
+  visited[y * samples + x] = 1;
+
+  while (head < queue.length) {
+    const [cx, cy] = queue[head++];
+    
+    // Check spectral angle
+    let dot = 0;
+    let normSq = 0;
+    for (let b = 0; b < bands; b++) {
+      const val = currentCube[cy * lineStride + cx * sampleStride + b * bandStride];
+      dot += refSpectrum[b] * val;
+      normSq += val * val;
+    }
+    const norm = Math.sqrt(normSq);
+    let angle = 0;
+    if (norm > 0) {
+      let cosTheta = dot / (refNorm * norm);
+      if (cosTheta > 1) cosTheta = 1;
+      if (cosTheta < -1) cosTheta = -1;
+      angle = Math.acos(cosTheta);
+    } else {
+      angle = Math.PI; // max angle if zero vector
+    }
+
+    if (angle <= tolerance) {
+      outMask[cy * samples + cx] = 1; // Mark as selected
+      
+      // Add neighbors
+      const neighbors = [
+        [cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]
+      ];
+      
+      for (const [nx, ny] of neighbors) {
+        if (nx >= 0 && nx < samples && ny >= 0 && ny < lines) {
+          const idx = ny * samples + nx;
+          if (visited[idx] === 0) {
+            visited[idx] = 1;
+            queue.push([nx, ny]);
+          }
+        }
+      }
+    }
+  }
+
+  // Post back the boolean mask
+  self.postMessage({ type: 'wandCompleted', mask: outMask }, [outMask.buffer]);
 }

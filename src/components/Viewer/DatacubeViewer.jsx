@@ -38,7 +38,8 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
   const brushHardness = useAppStore(s => s.brushHardness)
   const showMaskOverlay = useAppStore(s => s.showMaskOverlay)
   const maskOpacity = useAppStore(s => s.maskOpacity)
-  const maskColor = useAppStore(s => s.maskColor)
+  const classes = useAppStore(s => s.classes)
+  const activeClassId = useAppStore(s => s.activeClassId)
   const colormap = useAppStore(s => s.colormap)
 
   // Panning state
@@ -49,6 +50,7 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
   // Brush cursor state
   const [cursorPos, setCursorPos] = useState(null)
   const [screenMousePos, setScreenMousePos] = useState(null)
+  const [cursorScale, setCursorScale] = useState(1)
 
   // Annotation mask ref (Uint8Array, same size as image)
   const maskRef = useRef(null)
@@ -99,7 +101,14 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
     if (metadata) {
       if (initialMaskData && initialMaskData.length === metadata.samples * metadata.lines) {
         // Copy the initial mask into our mutable ref
-        maskRef.current = new Uint8Array(initialMaskData)
+        const newMask = new Uint8Array(initialMaskData)
+        // Convert legacy opacity masks (e.g. 255) to Class 1
+        for (let i = 0; i < newMask.length; i++) {
+          if (newMask[i] > 0 && newMask[i] > 10) { 
+            newMask[i] = 1 
+          }
+        }
+        maskRef.current = newMask
       } else {
         maskRef.current = new Uint8Array(metadata.samples * metadata.lines)
       }
@@ -155,6 +164,13 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
     const imgLeft = (containerW - displayW) / 2
     const imgTop = (containerH - displayH) / 2
 
+    const imgLeft = (containerW - displayW) / 2
+    const imgTop = (containerH - displayH) / 2
+
+    // Update the visual scale of a single image pixel on screen
+    const currentScale = zoom * (displayW / metadata.samples)
+    setCursorScale(currentScale)
+
     // Map to 0-1 range
     const normX = (unscaledX - imgLeft) / displayW
     const normY = (unscaledY - imgTop) / displayH
@@ -195,19 +211,26 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
     const data = imgData.data
     const mask = maskRef.current
     
-    const r = parseInt(maskColor.slice(1, 3), 16)
-    const g = parseInt(maskColor.slice(3, 5), 16)
-    const b = parseInt(maskColor.slice(5, 7), 16)
+    // Create a fast lookup for class colors
+    const classColors = {}
+    classes.forEach(c => {
+      classColors[c.id] = {
+        r: parseInt(c.color.slice(1, 3), 16),
+        g: parseInt(c.color.slice(3, 5), 16),
+        b: parseInt(c.color.slice(5, 7), 16)
+      }
+    })
 
     let dataIdx = 0
     for (let y = y0; y < y0 + h; y++) {
       for (let x = x0; x < x0 + w; x++) {
-        const maskVal = mask[y * samples + x]
-        if (maskVal > 0) {
-          data[dataIdx] = r
-          data[dataIdx + 1] = g
-          data[dataIdx + 2] = b
-          data[dataIdx + 3] = Math.floor(maskOpacity * 255 * (maskVal / 255))
+        const classId = mask[y * samples + x]
+        if (classId > 0 && classColors[classId]) {
+          const color = classColors[classId]
+          data[dataIdx] = color.r
+          data[dataIdx + 1] = color.g
+          data[dataIdx + 2] = color.b
+          data[dataIdx + 3] = Math.floor(maskOpacity * 255)
         }
         dataIdx += 4
       }
@@ -217,7 +240,7 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
       ctx.clearRect(0, 0, samples, lines)
     }
     ctx.putImageData(imgData, x0, y0)
-  }, [metadata, showMaskOverlay, maskOpacity, maskColor])
+  }, [metadata, showMaskOverlay, maskOpacity, classes])
 
   const redrawVectors = useCallback(() => {
     const canvas = vectorCanvasRef.current
@@ -326,35 +349,46 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
   }, [])
 
   // ─── Paint on annotation mask ───
-  const paintAt = useCallback((imgX, imgY, erase = false) => {
+  const paintAt = useCallback((cx, cy, erase = false) => {
     if (!maskRef.current || !metadata) return
-
+    const mask = maskRef.current
     const radius = brushSize
-    const { samples, lines } = metadata
+    const samples = metadata.samples
+    const lines = metadata.lines
+
+    let modified = false
+    let minX = cx, maxX = cx, minY = cy, maxY = cy
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         const dist = Math.sqrt(dx * dx + dy * dy)
         if (dist > radius) continue
 
-        const px = imgX + dx
-        const py = imgY + dy
-        if (px < 0 || px >= samples || py < 0 || py >= lines) continue
-
-        const idx = py * samples + px
-        if (erase) {
-          maskRef.current[idx] = 0
-        } else {
-          let strength = 255
-          if (brushHardness < 100) {
-            // Soft gradient brush: stronger in center
-            strength = Math.floor(255 * (1 - dist / radius))
+        const x = cx + dx
+        const y = cy + dy
+        if (x >= 0 && x < samples && y >= 0 && y < lines) {
+          const idx = y * samples + x
+          
+          if (erase) {
+            if (mask[idx] !== 0) {
+              mask[idx] = 0
+              modified = true
+            }
+          } else {
+            if (mask[idx] !== activeClassId) {
+              mask[idx] = activeClassId
+              modified = true
+            }
           }
-          maskRef.current[idx] = Math.max(maskRef.current[idx], strength)
+
+          if (modified) {
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
         }
       }
     }
-  }, [brushSize, brushHardness, metadata])
+  }, [brushSize, activeClassId, metadata])
 
   // ─── Interpolated line painting (no gaps) ───
   const paintLine = useCallback((x0, y0, x1, y1, erase) => {
@@ -415,7 +449,14 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
       }
     }
 
-    // Rectangle selection mode: start crop rectangle
+    // Wand mode
+    if (e.button === 0 && annotationMode === 'wand') {
+      const coords = screenToImage(e.clientX, e.clientY)
+      if (coords && onPixelClick) {
+        onPixelClick(coords.x, coords.y)
+      }
+      return
+    }
     if (e.button === 0 && annotationMode === 'rectangle') {
       const coords = screenToImage(e.clientX, e.clientY)
       if (coords) {
@@ -736,8 +777,8 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
             position: 'fixed',
             left: `${screenMousePos.x}px`,
             top: `${screenMousePos.y}px`,
-            width: `${brushSize * 2 * zoom}px`,
-            height: `${brushSize * 2 * zoom}px`,
+            width: `${brushSize * 2 * cursorScale}px`,
+            height: `${brushSize * 2 * cursorScale}px`,
             borderRadius: '50%',
             border: `2px solid ${annotationMode === 'eraser' ? 'var(--accent-red)' : 'var(--accent-teal)'}`,
             pointerEvents: 'none',
