@@ -169,24 +169,28 @@ export default function SpectralPlot({ spectrumData }) {
   }
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <Plot
-        data={plotData}
-        layout={layout}
-        config={config}
-        style={{ width: '100%', height: '100%' }}
-        useResizeHandler
-      />
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'row' }}>
+      <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+        <Plot
+          data={plotData}
+          layout={layout}
+          config={config}
+          style={{ width: '100%', height: '100%' }}
+          useResizeHandler
+        />
+      </div>
       
-      {/* Pinned Spectra UI overlay */}
+      {/* Pinned Spectra UI Panel */}
       <div style={{
-        position: 'absolute',
-        top: '10px',
-        right: '10px',
+        width: '160px',
+        flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
-        zIndex: 10
+        padding: '10px',
+        borderLeft: 'var(--border-default)',
+        background: 'var(--bg-primary)',
+        overflowY: 'auto'
       }}>
         <button
           onClick={handlePin}
@@ -249,8 +253,9 @@ export default function SpectralPlot({ spectrumData }) {
                 color: 'var(--text-secondary)',
                 cursor: 'pointer',
                 padding: '0 4px',
-                marginLeft: '4px'
+                marginLeft: 'auto'
               }}
+              title="Remove"
             >
               ×
             </button>
