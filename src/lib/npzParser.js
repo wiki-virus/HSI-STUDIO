@@ -30,11 +30,15 @@ function dtypeToTypedArray(dtype) {
   const map = {
     'f4': { constructor: Float32Array,  bytes: 4, name: 'float32' },
     'f8': { constructor: Float64Array,  bytes: 8, name: 'float64' },
+    'b1': { constructor: Uint8Array,    bytes: 1, name: 'bool'    },
     'u1': { constructor: Uint8Array,    bytes: 1, name: 'uint8'   },
+    'i1': { constructor: Int8Array,     bytes: 1, name: 'int8'    },
     'u2': { constructor: Uint16Array,   bytes: 2, name: 'uint16'  },
     'i2': { constructor: Int16Array,    bytes: 2, name: 'int16'   },
-    'i4': { constructor: Int32Array,    bytes: 4, name: 'int32'   },
     'u4': { constructor: Uint32Array,   bytes: 4, name: 'uint32'  },
+    'i4': { constructor: Int32Array,    bytes: 4, name: 'int32'   },
+    'u8': { constructor: BigUint64Array,bytes: 8, name: 'uint64'  },
+    'i8': { constructor: BigInt64Array, bytes: 8, name: 'int64'   },
   };
 
   const info = map[core];

@@ -204,7 +204,7 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
     }
 
     // Look for mask
-    const maskKeys = ['mask', 'labels', 'gt', 'ground_truth', 'annotation']
+    const maskKeys = ['mask', 'labels', 'gt', 'ground_truth', 'annotation', 'binary_mapped_mask', 'binary_mask', 'segmentation', 'seg']
     const maskKey = maskKeys.find(k => arrays[k])
 
     const metadata = {
