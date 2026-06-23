@@ -1,6 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Plot from 'react-plotly.js'
-import { Activity } from 'lucide-react'
+import { Activity, Download, ZoomIn, Hand, Maximize } from 'lucide-react'
 import useAppStore from '../../stores/useAppStore'
 
 /**
@@ -143,6 +143,18 @@ export default function SpectralPlot({ spectrumData }) {
     },
   }), [])
 
+  const triggerPlotlyButton = (title) => {
+    const btn = document.querySelector(`.modebar-btn[data-title="${title}"]`)
+    if (btn) btn.click()
+  }
+
+  const [activeTool, setActiveTool] = useState('zoom')
+
+  const handleToolClick = (tool, title) => {
+    setActiveTool(tool)
+    triggerPlotlyButton(title)
+  }
+
   if (!spectrumData) {
     return (
       <div className="empty-state">
@@ -170,6 +182,11 @@ export default function SpectralPlot({ spectrumData }) {
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'row' }}>
+      <style>{`
+        /* Hide the native Plotly ModeBar entirely since we built our own */
+        .modebar-container { display: none !important; }
+      `}</style>
+      
       <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
         <Plot
           data={plotData}
@@ -182,16 +199,52 @@ export default function SpectralPlot({ spectrumData }) {
       
       {/* Pinned Spectra UI Panel */}
       <div style={{
-        width: '160px',
+        width: '180px',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px',
+        gap: '12px',
         padding: '10px',
         borderLeft: 'var(--border-default)',
         background: 'var(--bg-primary)',
         overflowY: 'auto'
       }}>
+        {/* Custom Plotly Controls */}
+        <div style={{ display: 'flex', gap: '4px', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: 'var(--border-default)' }}>
+          <button
+            className={`toolbar-btn ${activeTool === 'zoom' ? 'active' : ''}`}
+            onClick={() => handleToolClick('zoom', 'Zoom')}
+            title="Zoom"
+            style={{ padding: '4px', minWidth: 'auto', flex: 1 }}
+          >
+            <ZoomIn size={16} />
+          </button>
+          <button
+            className={`toolbar-btn ${activeTool === 'pan' ? 'active' : ''}`}
+            onClick={() => handleToolClick('pan', 'Pan')}
+            title="Pan"
+            style={{ padding: '4px', minWidth: 'auto', flex: 1 }}
+          >
+            <Hand size={16} />
+          </button>
+          <button
+            className="toolbar-btn"
+            onClick={() => triggerPlotlyButton('Reset axes')}
+            title="Reset View"
+            style={{ padding: '4px', minWidth: 'auto', flex: 1 }}
+          >
+            <Maximize size={16} />
+          </button>
+          <button
+            className="toolbar-btn"
+            onClick={() => triggerPlotlyButton('Download plot as a png')}
+            title="Download Graph (PNG)"
+            style={{ padding: '4px', minWidth: 'auto', flex: 1 }}
+          >
+            <Download size={16} />
+          </button>
+        </div>
+
         <button
           onClick={handlePin}
           style={{
