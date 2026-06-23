@@ -112,7 +112,21 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
         }
 
         case 'datacubeCropped': {
-          const { samples, lines, bands } = e.data
+          const { samples, lines, bands, cropX, cropY } = e.data
+          
+          // Crop the annotation mask to match the new image dimensions
+          if (viewerMaskRef.current && metadata) {
+             const oldMask = viewerMaskRef.current
+             const newMask = new Uint8Array(samples * lines)
+             const oldWidth = metadata.samples
+             for (let y = 0; y < lines; y++) {
+               for (let x = 0; x < samples; x++) {
+                  newMask[y * samples + x] = oldMask[(cropY + y) * oldWidth + (cropX + x)]
+               }
+             }
+             viewerMaskRef.current = newMask
+          }
+
           // Update the store metadata with new dimensions
           const newMeta = {
             ...metadata,
@@ -123,6 +137,12 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
           }
           setFileLoaded(fileName + ' (cropped)', newMeta)
           setCropRegion(null)
+          
+          // Reset view state that might be invalid
+          setSpectrumData(null)
+          useAppStore.getState().clearPinnedSpectra()
+          useAppStore.getState().setSelectedPixel(null)
+
           // Request fresh band
           worker.postMessage({ type: 'extractBand', bandIndex: 0 })
           break

@@ -501,6 +501,8 @@ function handleCropDatacube({ x, y, width, height }) {
     samples: newW,
     lines: newH,
     bands: bands,
+    cropX: x0,
+    cropY: y0
   });
 }
 
