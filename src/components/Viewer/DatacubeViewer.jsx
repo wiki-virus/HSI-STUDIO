@@ -661,15 +661,29 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
             ref={canvasRef}
             style={{ width: '100%', height: '100%', imageRendering: 'pixelated' }}
           />
-          {/* Annotation overlay canvas */}
+          {/* Annotation mask canvas */}
           <canvas
-            ref={annotationCanvasRef}
+            ref={maskCanvasRef}
             className="annotation-canvas"
             style={{
               width: '100%',
               height: '100%',
               imageRendering: 'pixelated',
               pointerEvents: 'none',
+            }}
+          />
+          {/* Vector overlay canvas */}
+          <canvas
+            ref={vectorCanvasRef}
+            className="annotation-canvas"
+            style={{
+              width: '100%',
+              height: '100%',
+              imageRendering: 'pixelated',
+              pointerEvents: 'none',
+              position: 'absolute',
+              top: 0,
+              left: 0
             }}
           />
 
