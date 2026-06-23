@@ -1,7 +1,7 @@
 import useAppStore from '../../stores/useAppStore'
 import { 
   Layers, Palette, MousePointer2, Crop, Paintbrush, 
-  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, Upload, Wand2
+  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, Upload, Wand2, Github
 } from 'lucide-react'
 
 export default function Toolbar({ onSave }) {
@@ -137,16 +137,6 @@ export default function Toolbar({ onSave }) {
       {/* Right side controls */}
       <div className="toolbar-group">
         <button
-          className="toolbar-btn toolbar-btn-text"
-          onClick={onSave}
-          title="Save / Export (Ctrl+S)"
-        >
-          <Save size={16} /> Save
-        </button>
-
-        <div className="toolbar-divider" />
-
-        <button
           className="toolbar-btn"
           onClick={resetView}
           title="Reset View (zoom & pan)"
@@ -163,6 +153,30 @@ export default function Toolbar({ onSave }) {
         >
           <LineChart size={16} /> Spectra
         </button>
+
+        <div className="toolbar-divider" />
+
+        <button
+          className="toolbar-btn toolbar-btn-text"
+          onClick={onSave}
+          title="Save / Export (Ctrl+S)"
+          style={{ background: 'var(--accent-primary)', color: '#fff', border: 'none' }}
+        >
+          <Save size={16} /> Save
+        </button>
+
+        <div className="toolbar-divider" />
+
+        <a
+          href="https://github.com/wiki-virus/HSI-STUDIO"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="toolbar-btn"
+          title="View Source on GitHub"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}
+        >
+          <Github size={18} />
+        </a>
       </div>
     </div>
   )
