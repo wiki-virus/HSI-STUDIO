@@ -1,7 +1,7 @@
 import useAppStore from '../../stores/useAppStore'
 import { 
   Layers, Palette, MousePointer2, Crop, Paintbrush, 
-  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart 
+  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, FolderOpen 
 } from 'lucide-react'
 
 export default function Toolbar({ onSave }) {
@@ -13,6 +13,13 @@ export default function Toolbar({ onSave }) {
   const showSpectralPlot = useAppStore(s => s.showSpectralPlot)
   const toggleSpectralPlot = useAppStore(s => s.toggleSpectralPlot)
   const resetView = useAppStore(s => s.resetView)
+  const closeFile = useAppStore(s => s.closeFile)
+
+  const handleOpenFile = () => {
+    if (window.confirm("Are you sure you want to open a new file? Any unsaved annotations will be lost.")) {
+      closeFile()
+    }
+  }
 
   return (
     <div className="toolbar">
@@ -23,9 +30,19 @@ export default function Toolbar({ onSave }) {
 
       <div className="toolbar-divider" />
 
-      {/* Filename */}
-      <div className="toolbar-filename" title={fileName}>
-        {fileName || 'Untitled'}
+      {/* Open File / Filename */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+        <button
+          className="toolbar-btn toolbar-btn-text"
+          onClick={handleOpenFile}
+          title="Open New File"
+          style={{ padding: '4px 8px' }}
+        >
+          <FolderOpen size={16} /> Open
+        </button>
+        <div className="toolbar-filename" title={fileName}>
+          {fileName || 'Untitled'}
+        </div>
       </div>
 
       <div className="toolbar-divider" />

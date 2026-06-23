@@ -162,6 +162,21 @@ const useAppStore = create((set, get) => ({
 
   /** Reset the viewport to default zoom and position */
   resetView: () => set({ zoom: 1.0, panOffset: { x: 0, y: 0 } }),
+
+  /** Close the current file and return to the landing page */
+  closeFile: () => set({ 
+    fileLoaded: false, 
+    metadata: null, 
+    fileName: '', 
+    fileNames: [], 
+    timeSeries: [],
+    initialMaskData: null,
+    pinnedSpectra: [],
+    currentBand: 0,
+    currentFrame: 0,
+    selectedPixel: null,
+    annotationMode: 'view'
+  }),
 }));
 
 export default useAppStore;
