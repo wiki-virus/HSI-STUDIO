@@ -101,10 +101,6 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
       } else {
         maskRef.current = new Uint8Array(metadata.samples * metadata.lines)
       }
-      // Force overlay redraw once it's set
-      if (annotationCanvasRef.current) {
-        redrawOverlay()
-      }
     }
   }, [metadata, initialMaskData])
 
@@ -239,7 +235,7 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
 
   useEffect(() => {
     redrawOverlay()
-  }, [redrawOverlay, renderTick])
+  }, [redrawOverlay, renderTick, initialMaskData])
 
   // ─── Fill Polygon Algorithm ───
   const fillPolygon = useCallback((points) => {

@@ -287,9 +287,12 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
           setIsLoading(false)
           
           const setTimeSeriesLoaded = useAppStore.getState().setTimeSeriesLoaded
+          // Pass mask data from the first file (if any)
+          const firstMask = series[0]?.maskBuffer || null
           setTimeSeriesLoaded(
             series.map(s => s.fileName),
-            series.map(s => s.metadata)
+            series.map(s => s.metadata),
+            firstMask
           )
           resolve()
         } else if (e.data.type === 'error') {

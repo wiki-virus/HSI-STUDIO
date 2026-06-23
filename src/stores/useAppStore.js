@@ -100,7 +100,7 @@ const useAppStore = create((set, get) => ({
     set({ fileLoaded: true, fileName, fileNames: [fileName], timeSeries: [metadata], metadata, currentFrame: 0, currentBand: 0, initialMaskData }),
   
   /** Load multiple files for time-series playback */
-  setTimeSeriesLoaded: (fileNames, timeSeriesMetadata) =>
+  setTimeSeriesLoaded: (fileNames, timeSeriesMetadata, initialMaskData = null) =>
     set({ 
       fileLoaded: true, 
       fileName: fileNames[0], 
@@ -108,7 +108,8 @@ const useAppStore = create((set, get) => ({
       timeSeries: timeSeriesMetadata, 
       metadata: timeSeriesMetadata[0], 
       currentFrame: 0, 
-      currentBand: 0 
+      currentBand: 0,
+      initialMaskData 
     }),
 
   setCurrentFrame: (frame) => 
