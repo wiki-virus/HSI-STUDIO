@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import Plot from 'react-plotly.js'
 import useAppStore from '../../stores/useAppStore'
 import { X, Download, Trash2 } from 'lucide-react'
@@ -112,9 +113,9 @@ export default function ExportGraphModal({ onClose }) {
     if (btn) btn.click()
   }
 
-  return (
+  return createPortal(
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
+      position: 'fixed', inset: 0, zIndex: 99999,
       background: 'rgba(0,0,0,0.8)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '40px'
@@ -231,6 +232,7 @@ export default function ExportGraphModal({ onClose }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
