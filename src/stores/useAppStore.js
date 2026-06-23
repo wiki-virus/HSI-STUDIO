@@ -80,9 +80,7 @@ const useAppStore = create((set, get) => ({
 
   /** ML Classes for discrete multi-class annotation */
   classes: [
-    { id: 1, name: 'Class 1', color: '#ff4444' },
-    { id: 2, name: 'Class 2', color: '#44ff44' },
-    { id: 3, name: 'Class 3', color: '#4444ff' },
+    { id: 1, name: 'Class 1', color: '#ff4444' }
   ],
   /** The currently selected class ID for drawing/wand */
   activeClassId: 1,

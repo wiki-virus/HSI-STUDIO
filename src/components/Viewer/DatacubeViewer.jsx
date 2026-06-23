@@ -102,12 +102,35 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
       if (initialMaskData && initialMaskData.length === metadata.samples * metadata.lines) {
         // Copy the initial mask into our mutable ref
         const newMask = new Uint8Array(initialMaskData)
+        
+        const existingClasses = useAppStore.getState().classes
+        const existingIds = new Set(existingClasses.map(c => c.id))
+        const foundIds = new Set()
+
         // Convert legacy opacity masks (e.g. 255) to Class 1
         for (let i = 0; i < newMask.length; i++) {
-          if (newMask[i] > 0 && newMask[i] > 10) { 
-            newMask[i] = 1 
+          if (newMask[i] > 0) {
+            if (newMask[i] > 10) { 
+              newMask[i] = 1 
+            }
+            foundIds.add(newMask[i])
           }
         }
+        
+        // Add any discovered classes that aren't already in the store
+        const addClass = useAppStore.getState().addClass
+        foundIds.forEach(id => {
+          if (!existingIds.has(id)) {
+            // Generate a random bright color
+            const h = (id * 137.508) % 360
+            const s = 80 + Math.random() * 20
+            const l = 50 + Math.random() * 20
+            // HSL to HEX helper could be complex, let's use predefined palette or simple hex
+            const color = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
+            addClass({ id, name: `Imported Class ${id}`, color })
+          }
+        })
+
         maskRef.current = newMask
       } else {
         maskRef.current = new Uint8Array(metadata.samples * metadata.lines)

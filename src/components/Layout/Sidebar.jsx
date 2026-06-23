@@ -258,7 +258,7 @@ export default function Sidebar({ onRequestBand, onRequestRGB }) {
                   type="color"
                   value={cls.color}
                   onChange={(e) => updateClass(cls.id, { color: e.target.value })}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); setActiveClassId(cls.id); }}
                   style={{
                     width: '24px',
                     height: '24px',
@@ -272,7 +272,8 @@ export default function Sidebar({ onRequestBand, onRequestRGB }) {
                   type="text" 
                   value={cls.name}
                   onChange={(e) => updateClass(cls.id, { name: e.target.value })}
-                  onClick={(e) => e.stopPropagation()}
+                  onFocus={() => setActiveClassId(cls.id)}
+                  onClick={(e) => { e.stopPropagation(); setActiveClassId(cls.id); }}
                   style={{
                     flex: 1,
                     background: 'transparent',
