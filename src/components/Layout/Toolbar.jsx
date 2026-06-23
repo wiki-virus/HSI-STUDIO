@@ -1,7 +1,7 @@
 import useAppStore from '../../stores/useAppStore'
 import { 
   Layers, Palette, MousePointer2, Crop, Paintbrush, 
-  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, FolderOpen 
+  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, Upload 
 } from 'lucide-react'
 
 export default function Toolbar({ onSave }) {
@@ -16,7 +16,7 @@ export default function Toolbar({ onSave }) {
   const closeFile = useAppStore(s => s.closeFile)
 
   const handleOpenFile = () => {
-    if (window.confirm("Are you sure you want to open a new file? Any unsaved annotations will be lost.")) {
+    if (window.confirm("This will replace the current image. Are you sure you want to upload a new file? Any unsaved annotations will be lost.")) {
       closeFile()
     }
   }
@@ -35,10 +35,10 @@ export default function Toolbar({ onSave }) {
         <button
           className="toolbar-btn toolbar-btn-text"
           onClick={handleOpenFile}
-          title="Open New File"
+          title="Upload New File"
           style={{ padding: '4px 8px' }}
         >
-          <FolderOpen size={16} /> Open
+          <Upload size={16} /> Upload
         </button>
         <div className="toolbar-filename" title={fileName}>
           {fileName || 'Untitled'}
