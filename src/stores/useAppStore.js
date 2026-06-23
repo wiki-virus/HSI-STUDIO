@@ -121,7 +121,15 @@ const useAppStore = create((set, get) => ({
 
   // --- Viewer actions ---
   setCurrentBand: (band) => set({ currentBand: band }),
-  setViewMode:    (mode) => set({ viewMode: mode }),
+  setViewMode: (mode) => set((s) => {
+    if (mode === 'rgb' && s.rgbBands.r === 0 && s.rgbBands.g === 0 && s.rgbBands.b === 0) {
+      return { 
+        viewMode: mode, 
+        rgbBands: { r: s.currentBand, g: s.currentBand, b: s.currentBand } 
+      }
+    }
+    return { viewMode: mode }
+  }),
   setRGBBands:    (bands) => set({ rgbBands: bands }),
   setContrast:    (contrast) => set({ contrast }),
   setAutoStretch: (enabled) => set({ autoStretch: enabled }),
