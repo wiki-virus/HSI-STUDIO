@@ -254,7 +254,7 @@ byte order = 0`
     } finally {
       setSaving(false)
     }
-  }, [selectedFormat, metadata, fileName, currentBand, canvasRef, maskCanvasRef, vectorCanvasRef, excludeMasks, maskRef, triggerDownload, workerRef])
+  }, [selectedFormat, metadata, fileName, currentBand, canvasRef, excludeMasks, maskRef, triggerDownload, workerRef])
 
   return (
     <div style={{
