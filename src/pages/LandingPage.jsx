@@ -236,7 +236,16 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
       dataBuffer = float32.buffer
     }
 
-    return { buffer: dataBuffer, metadata, fileName: npzFile.name.replace(/\.npz$/i, '') }
+    let maskBuffer = null
+    if (maskKey && arrays[maskKey]) {
+      const maskArray = arrays[maskKey].data
+      maskBuffer = new Uint8Array(maskArray.length)
+      for (let i = 0; i < maskArray.length; i++) {
+        maskBuffer[i] = maskArray[i] > 0 ? 255 : 0
+      }
+    }
+
+    return { buffer: dataBuffer, metadata, maskBuffer, fileName: npzFile.name.replace(/\.npz$/i, '') }
   }
 
   const loadCSV = async (csvFile) => {

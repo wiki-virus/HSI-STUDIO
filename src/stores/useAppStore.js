@@ -35,6 +35,8 @@ const useAppStore = create((set, get) => ({
    * Shape: { samples, lines, bands, dataType, interleave, wavelengths, byteOrder }
    */
   metadata: null,
+  /** Any mask data found inside the uploaded file */
+  initialMaskData: null,
 
   // -----------------------------------------------------------------------
   // 2. Viewer state
@@ -94,8 +96,8 @@ const useAppStore = create((set, get) => ({
 
   // --- File actions ---
   /** Mark a file as loaded and store its metadata; resets band to 0 */
-  setFileLoaded: (fileName, metadata) =>
-    set({ fileLoaded: true, fileName, fileNames: [fileName], timeSeries: [metadata], metadata, currentFrame: 0, currentBand: 0 }),
+  setFileLoaded: (fileName, metadata, initialMaskData = null) =>
+    set({ fileLoaded: true, fileName, fileNames: [fileName], timeSeries: [metadata], metadata, currentFrame: 0, currentBand: 0, initialMaskData }),
   
   /** Load multiple files for time-series playback */
   setTimeSeriesLoaded: (fileNames, timeSeriesMetadata) =>

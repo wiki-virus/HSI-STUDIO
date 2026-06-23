@@ -90,12 +90,23 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
     }
   }, [])
 
+  const initialMaskData = useAppStore(s => s.initialMaskData)
+
   // ─── Initialize annotation mask ───
   useEffect(() => {
     if (metadata) {
-      maskRef.current = new Uint8Array(metadata.samples * metadata.lines)
+      if (initialMaskData && initialMaskData.length === metadata.samples * metadata.lines) {
+        // Copy the initial mask into our mutable ref
+        maskRef.current = new Uint8Array(initialMaskData)
+      } else {
+        maskRef.current = new Uint8Array(metadata.samples * metadata.lines)
+      }
+      // Force overlay redraw once it's set
+      if (annotationCanvasRef.current) {
+        redrawOverlay()
+      }
     }
-  }, [metadata])
+  }, [metadata, initialMaskData])
 
   // ─── Render band image when data changes ───
   useEffect(() => {
