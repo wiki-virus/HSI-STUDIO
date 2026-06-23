@@ -54,6 +54,7 @@ export default function StatusBar({ pixelValue }) {
 
       {/* Spacer & Shortcuts Map */}
       <div className="statusbar-spacer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', color: 'var(--text-tertiary)', fontSize: '10px' }}>
+        <span><kbd>Shift</kbd>+Hover: Spectrum</span>
         <span><kbd>V</kbd> View</span>
         <span><kbd>C</kbd> Crop</span>
         <span><kbd>B</kbd> Brush</span>

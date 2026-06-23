@@ -143,9 +143,16 @@ export default function SpectralPlot({ spectrumData }) {
     },
   }), [])
 
-  const triggerPlotlyButton = (title) => {
-    const btn = document.querySelector(`.modebar-btn[data-title="${title}"]`)
-    if (btn) btn.click()
+  const triggerPlotlyButton = (titleSubstring) => {
+    const btns = document.querySelectorAll('.modebar-btn')
+    for (const btn of btns) {
+      const t = btn.getAttribute('data-title') || ''
+      if (t.toLowerCase().includes(titleSubstring.toLowerCase())) {
+        btn.click()
+        return
+      }
+    }
+    console.warn('Plotly button not found:', titleSubstring)
   }
 
   const [activeTool, setActiveTool] = useState('zoom')
@@ -237,7 +244,7 @@ export default function SpectralPlot({ spectrumData }) {
           </button>
           <button
             className="toolbar-btn"
-            onClick={() => triggerPlotlyButton('Download plot as a png')}
+            onClick={() => triggerPlotlyButton('download')}
             title="Download Graph (PNG)"
             style={{ padding: '4px', minWidth: 'auto', flex: 1 }}
           >
