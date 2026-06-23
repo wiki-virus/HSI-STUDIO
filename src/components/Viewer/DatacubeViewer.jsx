@@ -17,7 +17,8 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
   const canvasRef = useRef(null)
   const containerRef = useRef(null)
   const rendererRef = useRef(null)
-  const annotationCanvasRef = useRef(null)
+  const maskCanvasRef = useRef(null)
+  const vectorCanvasRef = useRef(null)
 
   // Store selectors
   const metadata = useAppStore(s => s.metadata)
@@ -165,39 +166,66 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
   }, [metadata, zoom, panOffset])
 
   // ─── Draw overlays (mask and shapes) ───
-  const redrawOverlay = useCallback(() => {
-    const canvas = annotationCanvasRef.current
+  const redrawMask = useCallback((dirtyRect = null) => {
+    const canvas = maskCanvasRef.current
+    if (!canvas || !metadata) return
+
+    const { samples, lines } = metadata
+    let x0 = 0, y0 = 0, w = samples, h = lines
+    if (dirtyRect) {
+      x0 = dirtyRect.x
+      y0 = dirtyRect.y
+      w = dirtyRect.w
+      h = dirtyRect.h
+    } else {
+      canvas.width = samples
+      canvas.height = lines
+    }
+
+    const ctx = canvas.getContext('2d')
+    if (!showMaskOverlay || !maskRef.current) {
+      if (!dirtyRect) ctx.clearRect(0, 0, canvas.width, canvas.height)
+      return
+    }
+
+    const imgData = ctx.createImageData(w, h)
+    const data = imgData.data
+    const mask = maskRef.current
+    
+    const r = parseInt(maskColor.slice(1, 3), 16)
+    const g = parseInt(maskColor.slice(3, 5), 16)
+    const b = parseInt(maskColor.slice(5, 7), 16)
+
+    let dataIdx = 0
+    for (let y = y0; y < y0 + h; y++) {
+      for (let x = x0; x < x0 + w; x++) {
+        const maskVal = mask[y * samples + x]
+        if (maskVal > 0) {
+          data[dataIdx] = r
+          data[dataIdx + 1] = g
+          data[dataIdx + 2] = b
+          data[dataIdx + 3] = Math.floor(maskOpacity * 255 * (maskVal / 255))
+        }
+        dataIdx += 4
+      }
+    }
+
+    if (!dirtyRect) {
+      ctx.clearRect(0, 0, samples, lines)
+    }
+    ctx.putImageData(imgData, x0, y0)
+  }, [metadata, showMaskOverlay, maskOpacity, maskColor])
+
+  const redrawVectors = useCallback(() => {
+    const canvas = vectorCanvasRef.current
     if (!canvas || !metadata) return
 
     canvas.width = metadata.samples
     canvas.height = metadata.lines
 
-    if (!showMaskOverlay || !maskRef.current) return
-
     const ctx = canvas.getContext('2d')
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    // Parse mask color
-    const r = parseInt(maskColor.slice(1, 3), 16)
-    const g = parseInt(maskColor.slice(3, 5), 16)
-    const b = parseInt(maskColor.slice(5, 7), 16)
-
-    const imageData = ctx.createImageData(canvas.width, canvas.height)
-    const mask = maskRef.current
-
-    for (let i = 0; i < mask.length; i++) {
-      if (mask[i] > 0) {
-        const idx = i * 4
-        imageData.data[idx] = r
-        imageData.data[idx + 1] = g
-        imageData.data[idx + 2] = b
-        imageData.data[idx + 3] = Math.floor(maskOpacity * 255 * (mask[i] / 255))
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0)
-
-    // Draw active polygon / lasso paths
     if (polygonPoints.length > 0 || lassoPointsRef.current.length > 0) {
       ctx.strokeStyle = maskColor
       ctx.lineWidth = 2 / zoom
@@ -216,7 +244,6 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
 
       if (polygonPoints.length > 0) {
         drawPath(polygonPoints, false)
-        // Draw line from last point to current mouse pos if available
         if (screenMousePos) {
           const mCoords = screenToImage(screenMousePos.x, screenMousePos.y)
           if (mCoords) {
@@ -233,11 +260,12 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
       }
       ctx.setLineDash([])
     }
-  }, [metadata, showMaskOverlay, maskOpacity, maskColor, polygonPoints, screenMousePos, screenToImage, zoom])
+  }, [metadata, maskColor, polygonPoints, screenMousePos, screenToImage, zoom])
 
   useEffect(() => {
-    redrawOverlay()
-  }, [redrawOverlay, renderTick, initialMaskData])
+    redrawMask()
+    redrawVectors()
+  }, [redrawMask, redrawVectors, renderTick, initialMaskData])
 
   // ─── Fill Polygon Algorithm ───
   const fillPolygon = useCallback((points) => {
@@ -263,8 +291,9 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
         mask[i] = 255
       }
     }
-    redrawOverlay()
-  }, [metadata, redrawOverlay])
+    redrawMask()
+    redrawVectors()
+  }, [metadata, redrawMask, redrawVectors])
 
   // ─── Keyboard Shortcuts ───
   useEffect(() => {
@@ -326,6 +355,13 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
 
   // ─── Interpolated line painting (no gaps) ───
   const paintLine = useCallback((x0, y0, x1, y1, erase) => {
+    const minX = Math.max(0, Math.min(x0, x1) - brushSize)
+    const minY = Math.max(0, Math.min(y0, y1) - brushSize)
+    const maxX = Math.min(metadata.samples - 1, Math.max(x0, x1) + brushSize)
+    const maxY = Math.min(metadata.lines - 1, Math.max(y0, y1) + brushSize)
+    const w = maxX - minX + 1
+    const h = maxY - minY + 1
+    
     const dx = Math.abs(x1 - x0)
     const dy = Math.abs(y1 - y0)
     const steps = Math.max(dx, dy, 1)
@@ -336,7 +372,9 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
       const y = Math.round(y0 + (y1 - y0) * t)
       paintAt(x, y, erase)
     }
-  }, [paintAt])
+    
+    return { x: minX, y: minY, w, h }
+  }, [paintAt, metadata, brushSize])
 
   // ─── Mouse handlers ───
   const handleMouseDown = useCallback((e) => {
@@ -350,7 +388,8 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
         lastPaintPosRef.current = coords
         paintAt(coords.x, coords.y, annotationMode === 'eraser')
         // Force overlay re-render
-        redrawOverlay()
+        redrawMask()
+        redrawVectors()
       }
       return
     }
@@ -417,13 +456,14 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
       }
       return
     }
-  }, [annotationMode, screenToImage, onPixelClick, panOffset, paintAt, redrawOverlay])
+  }, [annotationMode, screenToImage, onPixelClick, panOffset, paintAt, redrawMask, redrawVectors])
 
   const handleMouseMove = useCallback((e) => {
     // Update cursor position for brush preview
     const coords = screenToImage(e.clientX, e.clientY)
     setCursorPos(coords)
     setScreenMousePos({ x: e.clientX, y: e.clientY })
+    if (polygonPoints.length > 0 || isLassoingRef.current) redrawVectors()
 
     if (isPanningRef.current) {
       const dx = e.clientX - panStartRef.current.x
@@ -438,11 +478,11 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
     if (isPaintingRef.current) {
       const coords = screenToImage(e.clientX, e.clientY)
       if (coords && lastPaintPosRef.current) {
-        paintLine(lastPaintPosRef.current.x, lastPaintPosRef.current.y, coords.x, coords.y, annotationMode === 'eraser')
+        const dirtyRect = paintLine(lastPaintPosRef.current.x, lastPaintPosRef.current.y, coords.x, coords.y, annotationMode === 'eraser')
         lastPaintPosRef.current = coords
 
-        // Quick overlay redraw
-        redrawOverlay()
+        // Quick mask redraw (only dirty rect)
+        redrawMask(dirtyRect)
       }
     }
 
@@ -468,7 +508,7 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
         lassoPointsRef.current.push(coords)
       }
     }
-  }, [screenToImage, setPanOffset, annotationMode, paintLine, redrawOverlay])
+  }, [screenToImage, setPanOffset, annotationMode, paintLine, redrawMask, redrawVectors, polygonPoints])
 
   const handleMouseUp = useCallback((e) => {
     isPanningRef.current = false

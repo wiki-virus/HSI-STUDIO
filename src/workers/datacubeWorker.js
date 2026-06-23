@@ -128,46 +128,58 @@ function createFloat32Datacube(buffer, metadata) {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the flat index into the datacube for a given (sample, line, band).
- *   BSQ: band * lines * samples + line * samples + sample
- *   BIL: line * bands * samples + band * samples + sample
- *   BIP: line * samples * bands + sample * bands + band
+ * Returns strides for fast contiguous array indexing based on interleave format.
  */
-function pixelIndex(sample, line, band, currentMeta = meta) {
-  const { samples, lines, bands, interleave } = currentMeta;
+function getStrides(samples, lines, bands, currentMeta = meta) {
+  const { interleave, shapeOrder, fortranOrder } = currentMeta;
+  let sampleStride, lineStride, bandStride;
 
   switch (interleave) {
     case 'bsq':
-      return band * lines * samples + line * samples + sample;
+      sampleStride = 1;
+      lineStride = samples;
+      bandStride = lines * samples;
+      break;
     case 'bil':
-      return line * bands * samples + band * samples + sample;
+      sampleStride = 1;
+      lineStride = bands * samples;
+      bandStride = samples;
+      break;
     case 'bip':
-      return line * samples * bands + sample * bands + band;
+      sampleStride = bands;
+      lineStride = samples * bands;
+      bandStride = 1;
+      break;
     case 'numpy': {
-      const { shapeOrder, fortranOrder } = currentMeta;
       if (shapeOrder === 'BHW') {
         if (fortranOrder) {
-          // (B, H, W) F-order: B changes fastest
-          return band + line * bands + sample * bands * lines;
+          bandStride = 1;
+          lineStride = bands;
+          sampleStride = bands * lines;
         } else {
-          // (B, H, W) C-order: W changes fastest
-          return band * lines * samples + line * samples + sample;
+          sampleStride = 1;
+          lineStride = samples;
+          bandStride = lines * samples;
         }
       } else { 
-        // 'HWB'
         if (fortranOrder) {
-          // (H, W, B) F-order: H changes fastest
-          return line + sample * lines + band * lines * samples;
+          lineStride = 1;
+          sampleStride = lines;
+          bandStride = lines * samples;
         } else {
-          // (H, W, B) C-order: B changes fastest
-          return line * samples * bands + sample * bands + band;
+          bandStride = 1;
+          sampleStride = bands;
+          lineStride = samples * bands;
         }
       }
+      break;
     }
     default:
-      // Fallback: assume BSQ
-      return band * lines * samples + line * samples + sample;
+      sampleStride = 1;
+      lineStride = samples;
+      bandStride = lines * samples;
   }
+  return { sampleStride, lineStride, bandStride };
 }
 
 // ---------------------------------------------------------------------------
@@ -187,9 +199,14 @@ function handleExtractBand({ bandIndex, frameIndex = 0 }) {
   const bandData = new Float32Array(pixelCount);
 
   // --- Extract band using interleave-aware indexing ---
+  const { sampleStride, lineStride, bandStride } = getStrides(samples, lines, currentMeta.bands, currentMeta);
+  const bandOffset = bandIndex * bandStride;
+
+  let outIdx = 0;
   for (let line = 0; line < lines; line++) {
+    const lineOffset = bandOffset + line * lineStride;
     for (let sample = 0; sample < samples; sample++) {
-      bandData[line * samples + sample] = currentDatacube[pixelIndex(sample, line, bandIndex, currentMeta)];
+      bandData[outIdx++] = currentDatacube[lineOffset + sample * sampleStride];
     }
   }
 
@@ -234,8 +251,11 @@ function handleExtractSpectrum({ x, y, frameIndex = 0 }) {
 
   const spectrum = new Float32Array(bands);
   
+  const { sampleStride, lineStride, bandStride } = getStrides(currentMeta.samples, currentMeta.lines, bands, currentMeta);
+  const pixelOffset = y * lineStride + x * sampleStride;
+
   for (let band = 0; band < bands; band++) {
-    spectrum[band] = currentDatacube[pixelIndex(x, y, band, currentMeta)];
+    spectrum[band] = currentDatacube[pixelOffset + band * bandStride];
   }
 
   // Build wavelengths array (if the header had them, pass through; else use indices)
@@ -279,12 +299,20 @@ function handleCompositeRGB({ rBand, gBand, bBand, autoStretch = true, frameInde
   const bData = new Float32Array(pixelCount);
 
   // Extract all 3 bands
+  const { sampleStride, lineStride, bandStride } = getStrides(samples, lines, currentMeta.bands, currentMeta);
+  const rOffset = rBand * bandStride;
+  const gOffset = gBand * bandStride;
+  const bOffset = bBand * bandStride;
+
+  let outIdx = 0;
   for (let line = 0; line < lines; line++) {
+    const lineBase = line * lineStride;
     for (let sample = 0; sample < samples; sample++) {
-      const flatIdx = line * samples + sample;
-      rData[flatIdx] = currentDatacube[pixelIndex(sample, line, rBand, currentMeta)];
-      gData[flatIdx] = currentDatacube[pixelIndex(sample, line, gBand, currentMeta)];
-      bData[flatIdx] = currentDatacube[pixelIndex(sample, line, bBand, currentMeta)];
+      const sampleOffset = lineBase + sample * sampleStride;
+      rData[outIdx] = currentDatacube[rOffset + sampleOffset];
+      gData[outIdx] = currentDatacube[gOffset + sampleOffset];
+      bData[outIdx] = currentDatacube[bOffset + sampleOffset];
+      outIdx++;
     }
   }
 
@@ -343,39 +371,28 @@ function computePercentiles(data, length) {
     };
   }
 
-  // Reservoir sampling for large arrays
-  const reservoir = new Float32Array(MAX_SAMPLES);
+  // Fast O(k) random sampling for large arrays
+  const sample = new Float32Array(MAX_SAMPLES);
   let filled = 0;
 
-  // Fill reservoir with first MAX_SAMPLES valid values
-  for (let i = 0; i < length && filled < MAX_SAMPLES; i++) {
-    const v = data[i];
+  // Try up to 2x MAX_SAMPLES times to handle sparse data/NaNs
+  for (let i = 0; i < MAX_SAMPLES * 2 && filled < MAX_SAMPLES; i++) {
+    const idx = Math.floor(Math.random() * length);
+    const v = data[idx];
     if (Number.isFinite(v)) {
-      reservoir[filled++] = v;
+      sample[filled++] = v;
     }
   }
 
   if (filled === 0) return { p1: 0, p99: 1 };
 
-  // Replace elements with decreasing probability (reservoir sampling)
-  let seen = filled;
-  for (let i = filled; i < length; i++) {
-    const v = data[i];
-    if (!Number.isFinite(v)) continue;
-    seen++;
-    const j = Math.floor(Math.random() * seen);
-    if (j < MAX_SAMPLES) {
-      reservoir[j] = v;
-    }
-  }
-
   // Sort only the small sample
-  const sample = reservoir.subarray(0, filled);
-  sample.sort();
+  const validSample = sample.subarray(0, filled);
+  validSample.sort();
 
   return {
-    p1:  sample[Math.floor(filled * 0.01)],
-    p99: sample[Math.min(Math.floor(filled * 0.99), filled - 1)],
+    p1:  validSample[Math.floor(filled * 0.01)],
+    p99: validSample[Math.min(Math.floor(filled * 0.99), filled - 1)],
   };
 }
 
@@ -440,12 +457,15 @@ function handleCropDatacube({ x, y, width, height }) {
   // Build new BIP-ordered datacube
   const newSize = newH * newW * bands;
   const cropped = new Float32Array(newSize);
+  const { sampleStride, lineStride, bandStride } = getStrides(samples, meta.lines, bands, meta);
 
   let outIdx = 0;
   for (let line = y0; line < y1; line++) {
+    const lineBase = line * lineStride;
     for (let sample = x0; sample < x1; sample++) {
+      const sampleBase = lineBase + sample * sampleStride;
       for (let band = 0; band < bands; band++) {
-        cropped[outIdx++] = datacube[pixelIndex(sample, line, band)];
+        cropped[outIdx++] = datacube[sampleBase + band * bandStride];
       }
     }
   }
