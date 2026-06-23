@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://hsi-studio.vercel.app/sitemap.xml
