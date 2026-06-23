@@ -40,10 +40,10 @@ A fast, browser-based Hyperspectral Image (HSI) viewer and annotation tool. Buil
 5. **Cropping:** Select the "Crop" tool, drag a rectangle over the image, and click "Apply Crop" to extract a sub-region.
 6. **Exporting:** Click the "Save" button in the top right to download your cropped datacube, RGB image, or annotation masks.
 
-## ⚖️ Copyright & License
+## ⚖️ License
 
-Copyright © 2026. All Rights Reserved.
+This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. 
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software to use and run the software without modification for personal, educational, or research purposes. 
+You are free to use, modify, and distribute this software. However, any modified versions or derivative works must also be open-sourced under the same GPLv3 license, must state the changes made, and must include the original copyright notice. 
 
-Commercial use, unauthorized modification, redistribution, or resale of this code is strictly prohibited.
+For full details, please see the [LICENSE](LICENSE) file.
