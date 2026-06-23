@@ -134,7 +134,7 @@ function getStrides(samples, lines, bands, currentMeta = meta) {
   const { interleave, shapeOrder, fortranOrder } = currentMeta;
   let sampleStride, lineStride, bandStride;
 
-  switch (interleave) {
+  switch (String(interleave).toLowerCase()) {
     case 'bsq':
       sampleStride = 1;
       lineStride = samples;
@@ -414,9 +414,21 @@ function handleExportDatacube() {
     return;
   }
 
-  // Create a copy so we don't transfer and lose the working data
+  // Create a BSQ-ordered copy for NPZ export
   const copy = new Float32Array(datacube.length);
-  copy.set(datacube);
+  const { samples, lines, bands } = meta;
+  const { sampleStride, lineStride, bandStride } = getStrides(samples, lines, bands, meta);
+
+  let outIdx = 0;
+  for (let band = 0; band < bands; band++) {
+    const bandBase = band * bandStride;
+    for (let line = 0; line < lines; line++) {
+      const lineBase = bandBase + line * lineStride;
+      for (let sample = 0; sample < samples; sample++) {
+        copy[outIdx++] = datacube[lineBase + sample * sampleStride];
+      }
+    }
+  }
 
   self.postMessage(
     {
