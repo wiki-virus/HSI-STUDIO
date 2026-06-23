@@ -145,19 +145,69 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
       throw new Error('Invalid ENVI header: missing samples, lines, or bands.')
     }
 
-    setLoadingStatus(`Loading datacube (${dataFile.name})...`)
-    const buffer = await dataFile.arrayBuffer()
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        try {
+          const buffer = e.target.result
+          
+          // Validate file size
+          const bytesPerPixel = metadata.dataTypeSize || 4
+          const expectedSize = metadata.samples * metadata.lines * metadata.bands * bytesPerPixel
+          if (buffer.byteLength < expectedSize) {
+            throw new Error(`Data file too small. Expected ${(expectedSize / 1024 / 1024).toFixed(1)} MB.`)
+          }
 
-    // Validate file size
-    const bytesPerPixel = metadata.dataTypeSize || 4
-    const expectedSize = metadata.samples * metadata.lines * metadata.bands * bytesPerPixel
-    if (buffer.byteLength < expectedSize) {
-      throw new Error(
-        `Data file too small. Expected ${(expectedSize / 1024 / 1024).toFixed(1)} MB but got ${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB.`
-      )
-    }
+          // Use enviParser helpers to map to Float32Array and handle endianness
+          const { getDataTypeInfo } = await import('../lib/enviParser')
+          const typeInfo = getDataTypeInfo(metadata.dataType)
+          if (!typeInfo) throw new Error(`Unsupported ENVI data type: ${metadata.dataType}`)
 
-    return { buffer, metadata, fileName: hdrFile.name.replace(/\.hdr$/i, '') }
+          const { constructor: TypedCtor, bytes: bpe } = typeInfo
+          const isBigInt = (TypedCtor === BigInt64Array || TypedCtor === BigUint64Array)
+          
+          // Check endianness
+          const platformIsLE = new Uint8Array(new Uint16Array([0x0102]).buffer)[0] === 0x02
+          const fileIsLE = metadata.byteOrder === 0
+          const swap = platformIsLE !== fileIsLE
+          
+          const totalPixels = metadata.samples * metadata.lines * metadata.bands
+          const offset = metadata.headerOffset || 0
+          const rawSlice = buffer.slice(offset, offset + totalPixels * bpe)
+          const typed = new TypedCtor(rawSlice)
+          
+          // Byte swap if necessary
+          if (swap && bpe > 1) {
+            const raw = new Uint8Array(typed.buffer, typed.byteOffset, typed.byteLength)
+            for (let i = 0; i < raw.length; i += bpe) {
+              for (let lo = 0, hi = bpe - 1; lo < hi; lo++, hi--) {
+                const tmp = raw[i + lo]
+                raw[i + lo] = raw[i + hi]
+                raw[i + hi] = tmp
+              }
+            }
+          }
+          
+          // Convert to Float32Array
+          const floatData = new Float32Array(totalPixels)
+          for (let i = 0; i < totalPixels; i++) {
+            floatData[i] = isBigInt ? Number(typed[i]) : typed[i]
+          }
+          
+          // Update metadata so the worker knows we've converted it
+          metadata.dataType = 4
+          metadata.dataTypeSize = 4
+          metadata.byteOrder = platformIsLE ? 0 : 1
+          metadata.headerOffset = 0
+
+          resolve({ buffer: floatData.buffer, metadata, fileName: hdrFile.name.replace(/\.hdr$/i, '') })
+        } catch (err) {
+          reject(err)
+        }
+      }
+      reader.onerror = () => reject(new Error('Failed to read data file'))
+      reader.readAsArrayBuffer(dataFile)
+    })
   }
 
   const loadNPZ = async (npzFile) => {
