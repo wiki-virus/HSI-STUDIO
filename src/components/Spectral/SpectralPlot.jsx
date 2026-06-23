@@ -129,6 +129,9 @@ export default function SpectralPlot({ spectrumData }) {
     dragmode: 'zoom',
   }), [metadata])
 
+  const addPinnedSpectrum = useAppStore(s => s.addPinnedSpectrum)
+  const removePinnedSpectrum = useAppStore(s => s.removePinnedSpectrum)
+
   const config = useMemo(() => ({
     responsive: true,
     displayModeBar: true,
@@ -149,9 +152,6 @@ export default function SpectralPlot({ spectrumData }) {
       </div>
     )
   }
-
-  const addPinnedSpectrum = useAppStore(s => s.addPinnedSpectrum)
-  const removePinnedSpectrum = useAppStore(s => s.removePinnedSpectrum)
 
   const handlePin = () => {
     if (!spectrumData) return
