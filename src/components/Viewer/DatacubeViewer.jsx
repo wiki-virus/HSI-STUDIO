@@ -152,9 +152,12 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
       displayW = containerH * imageAspect
     }
 
+    const imgLeft = (containerW - displayW) / 2
+    const imgTop = (containerH - displayH) / 2
+
     // Map to 0-1 range
-    const normX = unscaledX / displayW
-    const normY = unscaledY / displayH
+    const normX = (unscaledX - imgLeft) / displayW
+    const normY = (unscaledY - imgTop) / displayH
 
     // Map to pixel coords
     const px = Math.floor(normX * metadata.samples)
