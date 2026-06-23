@@ -42,6 +42,8 @@ A fast, browser-based Hyperspectral Image (HSI) viewer and annotation tool. Buil
 
 ## ⚖️ Copyright & License
 
-**Copyright © 2026. All Rights Reserved.**
+Copyright © 2026. All Rights Reserved.
 
-This software and its source code are the proprietary property of the author. Unauthorized copying, modification, distribution, or use of this code, via any medium, is strictly prohibited. This repository is provided for view-only purposes; no license is granted for external use or contribution.
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software to use and run the software without modification for personal, educational, or research purposes. 
+
+Commercial use, unauthorized modification, redistribution, or resale of this code is strictly prohibited.
