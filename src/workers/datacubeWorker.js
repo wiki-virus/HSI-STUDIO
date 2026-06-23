@@ -450,18 +450,19 @@ function handleExportDatacube() {
 // cropDatacube — extract a rectangular sub-region and replace working data
 // ---------------------------------------------------------------------------
 function handleCropDatacube({ x, y, width, height }) {
-  if (!datacube || !meta) {
+  if (frames.length === 0) {
     self.postMessage({ type: 'error', message: 'No datacube loaded' });
     return;
   }
 
-  const { samples, bands } = meta;
+  const baseMeta = frames[0].meta;
+  const { samples, bands } = baseMeta;
 
   // Clamp to valid range
   const x0 = Math.max(0, Math.floor(x));
   const y0 = Math.max(0, Math.floor(y));
   const x1 = Math.min(samples, x0 + Math.floor(width));
-  const y1 = Math.min(meta.lines, y0 + Math.floor(height));
+  const y1 = Math.min(baseMeta.lines, y0 + Math.floor(height));
   const newW = x1 - x0;
   const newH = y1 - y0;
 
@@ -470,30 +471,38 @@ function handleCropDatacube({ x, y, width, height }) {
     return;
   }
 
-  // Build new BIP-ordered datacube
   const newSize = newH * newW * bands;
-  const cropped = new Float32Array(newSize);
-  const { sampleStride, lineStride, bandStride } = getStrides(samples, meta.lines, bands, meta);
 
-  let outIdx = 0;
-  for (let line = y0; line < y1; line++) {
-    const lineBase = line * lineStride;
-    for (let sample = x0; sample < x1; sample++) {
-      const sampleBase = lineBase + sample * sampleStride;
-      for (let band = 0; band < bands; band++) {
-        cropped[outIdx++] = datacube[sampleBase + band * bandStride];
+  // Crop all frames in the time series (or just the single frame)
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i];
+    const cropped = new Float32Array(newSize);
+    const { sampleStride, lineStride, bandStride } = getStrides(samples, frame.meta.lines, bands, frame.meta);
+
+    let outIdx = 0;
+    for (let line = y0; line < y1; line++) {
+      const lineBase = line * lineStride;
+      for (let sample = x0; sample < x1; sample++) {
+        const sampleBase = lineBase + sample * sampleStride;
+        for (let band = 0; band < bands; band++) {
+          cropped[outIdx++] = frame.datacube[sampleBase + band * bandStride];
+        }
       }
     }
+
+    // Replace frame data with cropped version (now BIP)
+    frame.datacube = cropped;
+    frame.meta = {
+      ...frame.meta,
+      samples: newW,
+      lines: newH,
+      interleave: 'bip', // we wrote it as BIP
+    };
   }
 
-  // Replace working data with cropped version (now BIP)
-  datacube = cropped;
-  meta = {
-    ...meta,
-    samples: newW,
-    lines: newH,
-    interleave: 'bip', // we wrote it as BIP
-  };
+  // Update global pointers to the first frame
+  datacube = frames[0].datacube;
+  meta = frames[0].meta;
 
   // Notify main thread of new dimensions
   self.postMessage({
