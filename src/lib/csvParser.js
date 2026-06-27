@@ -23,7 +23,7 @@
  * Parse CSV text into a structured spectral dataset.
  *
  * @param {string} text — raw CSV text
- * @returns {{ datacube: Float32Array, metadata: object }}
+ * @returns {{ datacube: Float32Array, metadata: object, mask: Uint8Array|null }}
  */
 export function parseCsv(text) {
   const allLines = text.split(/\r?\n/).filter((line) => line.trim().length > 0)
@@ -149,6 +149,7 @@ function parseTransposed(headers, rows) {
 
   return {
     datacube,
+    mask: null,
     metadata: {
       samples,
       lines: linesCount,
@@ -217,8 +218,27 @@ function parseWide(headers, rows) {
 
   const wavelengths = columnInfo.wavelengths
 
+  // ─── Rebuild the annotation mask from the Class/label column (if present) ───
+  // Rows are laid out in the same sequential order as datacube pixels, which
+  // matches the viewer's mask indexing (y * samples + x), so the i-th row maps
+  // to mask index i.
+  let mask = null
+  if (columnInfo.labelCol !== null) {
+    const m = new Uint8Array(samples * linesCount)
+    let hasClass = false
+    for (let i = 0; i < numPixels; i++) {
+      const v = parseInt(rows[i][columnInfo.labelCol], 10)
+      if (Number.isFinite(v) && v > 0) {
+        m[i] = v
+        hasClass = true
+      }
+    }
+    if (hasClass) mask = m
+  }
+
   return {
     datacube,
+    mask,
     metadata: {
       samples,
       lines: linesCount,

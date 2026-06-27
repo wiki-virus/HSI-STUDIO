@@ -301,8 +301,8 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
     setLoadingStatus('Parsing CSV...')
     const text = await csvFile.text()
     const { parseCsv } = await import('../lib/csvParser')
-    const { datacube, metadata } = parseCsv(text)
-    const series = [{ buffer: datacube.buffer, metadata, fileName: csvFile.name.replace(/\.csv$/i, '') }]
+    const { datacube, metadata, mask } = parseCsv(text)
+    const series = [{ buffer: datacube.buffer, metadata, maskBuffer: mask, fileName: csvFile.name.replace(/\.csv$/i, '') }]
     await initWorkerTimeSeries(series)
   }
 
