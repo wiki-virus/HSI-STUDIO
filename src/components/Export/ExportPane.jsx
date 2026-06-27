@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
-import { X, Archive, Database, FileSpreadsheet, Image as ImageIcon, PaintBucket, Layers, FileBox, CheckCircle2 } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { X, Archive, Database, FileSpreadsheet, Image as ImageIcon, PaintBucket, Layers, FileBox, Download, AlertCircle, CheckCircle2 } from 'lucide-react'
 import useAppStore from '../../stores/useAppStore'
 
 const EXPORT_FORMATS = [
@@ -353,43 +353,90 @@ byte order = 0`
     }
   }, [selectedFormat, metadata, fileName, currentBand, canvasRef, excludeMasks, maskRef, triggerDownload, workerRef])
 
+  const selectedMeta = EXPORT_FORMATS.find(f => f.id === selectedFormat)
+  const SelectedIcon = selectedMeta?.icon || Download
+  const isError = statusMsg.startsWith('✗')
+  const isSuccess = statusMsg.startsWith('✓')
+  const cleanStatus = statusMsg.replace(/^[✓✗]\s*/, '')
+
   return (
     <div style={{
       width: '400px',
       background: 'var(--bg-secondary)',
-      borderLeft: 'var(--border-default)',
+      borderLeft: 'var(--border-subtle)',
       display: 'flex',
       flexDirection: 'column',
-      padding: 'var(--space-md)',
+      padding: 'var(--space-lg)',
       color: 'var(--text-primary)',
       fontFamily: 'var(--font-sans)',
-      overflowY: 'auto'
+      overflowY: 'auto',
+      animation: 'slideIn var(--transition-smooth) forwards',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
-        <h2 style={{ fontSize: 'var(--font-lg)', fontWeight: 600, margin: 0 }}>Export</h2>
+      {/* ─── Header ─── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-xl)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+          <div style={{
+            width: 40,
+            height: 40,
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--gradient-subtle)',
+            border: 'var(--border-accent)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--accent-blue)',
+            flexShrink: 0,
+          }}>
+            <Download size={20} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: 'var(--font-lg)', fontWeight: 700, margin: 0, letterSpacing: '-0.02em' }}>Export</h2>
+            <div style={{
+              fontSize: 'var(--font-xs)',
+              color: 'var(--text-tertiary)',
+              fontFamily: 'var(--font-mono)',
+              maxWidth: 240,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {fileName || 'datacube'}
+            </div>
+          </div>
+        </div>
         <button
           onClick={onClose}
+          aria-label="Close export panel"
           style={{
             background: 'none',
             border: 'none',
             color: 'var(--text-secondary)',
-            fontSize: 'var(--font-xl)',
             cursor: 'pointer',
-            padding: '4px',
+            padding: 6,
             borderRadius: 'var(--radius-sm)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            transition: 'all var(--transition-fast)',
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-secondary)' }}
         >
-          <X size={20} />
+          <X size={18} />
         </button>
       </div>
 
-      <div style={{ marginBottom: 'var(--space-md)' }}>
-        <label style={{ display: 'block', fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-xs)' }}>
+      {/* ─── Format selector ─── */}
+      <div style={{ marginBottom: 'var(--space-lg)' }}>
+        <label style={{
+          display: 'block',
+          fontSize: 'var(--font-xs)',
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          color: 'var(--text-tertiary)',
+          marginBottom: 'var(--space-sm)',
+        }}>
           Format
         </label>
         <select
@@ -407,7 +454,7 @@ byte order = 0`
             borderRadius: 'var(--radius-md)',
             padding: 'var(--space-sm) var(--space-md)',
             fontSize: 'var(--font-sm)',
-            cursor: 'pointer',
+            cursor: saving ? 'not-allowed' : 'pointer',
           }}
         >
           <optgroup label="Full Datacube">
@@ -428,69 +475,111 @@ byte order = 0`
         </select>
       </div>
 
+      {/* ─── Selected format description card ─── */}
+      <div style={{
+        display: 'flex',
+        gap: 'var(--space-md)',
+        background: 'var(--bg-tertiary)',
+        border: 'var(--border-subtle)',
+        borderRadius: 'var(--radius-md)',
+        padding: 'var(--space-md)',
+        marginBottom: 'var(--space-lg)',
+      }}>
+        <div style={{
+          width: 36,
+          height: 36,
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--accent-blue-dim)',
+          color: 'var(--accent-blue)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <SelectedIcon size={18} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 'var(--font-sm)', fontWeight: 600, marginBottom: 2 }}>
+            {selectedMeta?.label}
+          </div>
+          <div style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+            {selectedMeta?.desc}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Annotation toggle ─── */}
       {['npz', 'csv', 'png-view'].includes(selectedFormat) && (
-        <div style={{ marginBottom: 'var(--space-md)', padding: 'var(--space-sm) 0' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>
-            <input 
-              type="checkbox" 
-              checked={excludeMasks} 
-              onChange={(e) => setExcludeMasks(e.target.checked)}
-              style={{ accentColor: 'var(--accent-blue)' }}
-            />
-            <span style={{ fontSize: 'var(--font-sm)' }}>Exclude annotations (Export raw data only)</span>
-          </label>
+        <label style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-sm)',
+          cursor: 'pointer',
+          background: 'var(--bg-tertiary)',
+          border: 'var(--border-subtle)',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-sm) var(--space-md)',
+          marginBottom: 'var(--space-lg)',
+        }}>
+          <input
+            type="checkbox"
+            checked={excludeMasks}
+            onChange={(e) => setExcludeMasks(e.target.checked)}
+            style={{ accentColor: 'var(--accent-blue)', width: 14, height: 14, cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: 'var(--font-sm)' }}>Exclude annotations <span style={{ color: 'var(--text-tertiary)' }}>(raw data only)</span></span>
+        </label>
+      )}
+
+      {/* ─── Status ─── */}
+      {statusMsg && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-sm)',
+          fontSize: 'var(--font-sm)',
+          color: isSuccess ? 'var(--accent-teal)' : isError ? 'var(--accent-red)' : 'var(--text-secondary)',
+          background: isSuccess ? 'var(--accent-teal-dim)' : isError ? 'var(--accent-red-dim)' : 'var(--bg-tertiary)',
+          border: 'var(--border-subtle)',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-sm) var(--space-md)',
+          marginBottom: 'var(--space-md)',
+        }}>
+          {saving && <span className="spinner" style={{ width: 14, height: 14, flexShrink: 0 }} />}
+          {isSuccess && <CheckCircle2 size={16} style={{ flexShrink: 0 }} />}
+          {isError && <AlertCircle size={16} style={{ flexShrink: 0 }} />}
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-xs)' }}>{cleanStatus}</span>
         </div>
       )}
 
-      {/* Format description */}
-      <div style={{
-        fontSize: 'var(--font-xs)',
-        color: 'var(--text-tertiary)',
-        background: 'var(--bg-tertiary)',
-        borderRadius: 'var(--radius-sm)',
-        padding: 'var(--space-sm) var(--space-md)',
-        marginBottom: 'var(--space-lg)',
-        lineHeight: 1.5,
-      }}>
-        {selectedFormat === 'npz' && '💾 Saves the full datacube, wavelengths, and annotation mask as a compressed NumPy archive. Compatible with Python/NumPy.'}
-        {selectedFormat === 'envi' && '💾 Saves as ENVI format (.hdr header + .dat binary). Standard format for ENVI, MATLAB, and many remote sensing tools.'}
-        {selectedFormat === 'csv' && '📄 Exports all pixels + bands to a CSV file. Adds a "Class" column if annotations are present.'}
-        {selectedFormat === 'png-view' && '🖼️ Saves a screenshot of the currently displayed band/composite view as a PNG image.'}
-        {selectedFormat === 'mask-png' && '🎭 Exports only the annotation mask as a grayscale PNG (white = annotated, black = background).'}
-        {selectedFormat === 'mask-npz' && '🎭 Exports only the annotation mask as a NumPy array inside a .npz file.'}
-        {selectedFormat === 'mask-raw' && '🎭 Exports the raw annotation mask as a flat binary file (uint8, row-major).'}
-      </div>
-
-      {/* Status */}
-      {statusMsg && (
-        <div style={{
-          fontSize: 'var(--font-sm)',
-          color: statusMsg.startsWith('✓') ? 'var(--accent-green)' :
-                 statusMsg.startsWith('✗') ? 'var(--accent-red)' :
-                 'var(--accent-teal)',
-          marginBottom: 'var(--space-md)',
-          fontFamily: 'var(--font-mono)',
-        }} dangerouslySetInnerHTML={{ __html: statusMsg.replace(/\n/g, '<br/>') }} />
-      )}
-
-      {/* Actions */}
-      <div style={{ marginTop: 'auto', display: 'flex', gap: 'var(--space-sm)' }}>
+      {/* ─── Action ─── */}
+      <div style={{ marginTop: 'auto', paddingTop: 'var(--space-md)' }}>
         <button
           onClick={handleSave}
           disabled={saving || !metadata}
           style={{
-            flex: 1,
-            background: saving ? 'var(--bg-tertiary)' : 'var(--accent-blue)',
-            color: 'white',
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 'var(--space-sm)',
+            background: saving || !metadata ? 'var(--bg-tertiary)' : 'var(--gradient-primary)',
+            color: saving || !metadata ? 'var(--text-secondary)' : 'white',
             border: 'none',
             borderRadius: 'var(--radius-md)',
-            padding: 'var(--space-sm) var(--space-md)',
+            padding: 'var(--space-md)',
+            fontSize: 'var(--font-sm)',
             fontWeight: 600,
             cursor: saving || !metadata ? 'not-allowed' : 'pointer',
-            opacity: saving || !metadata ? 0.7 : 1,
+            boxShadow: saving || !metadata ? 'none' : '0 2px 12px var(--accent-blue-glow)',
+            transition: 'all var(--transition-normal)',
           }}
+          onMouseEnter={e => { if (!(saving || !metadata)) { e.currentTarget.style.boxShadow = '0 4px 20px var(--accent-blue-glow)'; e.currentTarget.style.transform = 'translateY(-1px)' } }}
+          onMouseLeave={e => { e.currentTarget.style.boxShadow = saving || !metadata ? 'none' : '0 2px 12px var(--accent-blue-glow)'; e.currentTarget.style.transform = 'translateY(0)' }}
         >
-          {saving ? 'Exporting...' : 'Export File'}
+          {saving
+            ? <><span className="spinner" style={{ width: 16, height: 16 }} /> Exporting…</>
+            : <><Download size={16} /> Export File</>}
         </button>
       </div>
     </div>
