@@ -12,7 +12,7 @@ const RGB_PRESETS = {
   'Custom':        null,
 }
 
-export default function Sidebar({ onRequestBand, onRequestRGB }) {
+export default function Sidebar({ onRequestBand, onRequestRGB, onBatchExportRois }) {
   const metadata = useAppStore(s => s.metadata)
   const currentBand = useAppStore(s => s.currentBand)
   const setCurrentBand = useAppStore(s => s.setCurrentBand)
@@ -43,6 +43,9 @@ export default function Sidebar({ onRequestBand, onRequestRGB }) {
   const setMaskOpacity = useAppStore(s => s.setMaskOpacity)
   const showMaskOverlay = useAppStore(s => s.showMaskOverlay)
   const setShowMaskOverlay = useAppStore(s => s.setShowMaskOverlay)
+
+  const rois = useAppStore(s => s.rois)
+  const removeRoi = useAppStore(s => s.removeRoi)
 
   const totalBands = metadata?.bands ?? 0
   const wavelengths = metadata?.wavelengths ?? null
@@ -356,6 +359,35 @@ export default function Sidebar({ onRequestBand, onRequestRGB }) {
             <div className="toggle-thumb" />
           </label>
         </div>
+      </div>
+
+      {/* ─── Regions of Interest (ROIs) ─── */}
+      <div className="sidebar-section">
+        <div className="sidebar-section-title">Regions of Interest (ROIs)</div>
+        {rois.length === 0 ? (
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: 'var(--space-xs) 0' }}>
+            No ROIs drawn. Use the ROI tool to select patches.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+            {rois.map(roi => (
+              <div key={roi.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)', padding: 'var(--space-xs) var(--space-sm)', borderRadius: 'var(--radius-sm)' }}>
+                <span style={{ fontSize: 'var(--font-sm)', fontFamily: 'var(--font-mono)' }}>{roi.name}</span>
+                <div style={{ display: 'flex', gap: 'var(--space-xs)', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginRight: '4px' }}>{roi.w}x{roi.h}</span>
+                  <button onClick={() => removeRoi(roi.id)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: '2px' }} title="Delete">✕</button>
+                </div>
+              </div>
+            ))}
+            <button 
+              className="btn btn-primary" 
+              style={{ marginTop: 'var(--space-sm)', width: '100%', fontSize: 'var(--font-sm)', padding: 'var(--space-xs)' }}
+              onClick={() => onBatchExportRois && onBatchExportRois(rois)}
+            >
+              Batch Export ROIs (.zip)
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -229,3 +229,41 @@ export async function parseNpz(arrayBuffer) {
 
   return result;
 }
+
+/**
+ * Creates a raw ArrayBuffer representing an uncompressed .npy file.
+ * @param {TypedArray} data - The flat array of data.
+ * @param {number[]} shape - The dimensions.
+ * @param {string} dtype - NumPy dtype string (e.g. '<f4', '|u1').
+ * @returns {ArrayBuffer}
+ */
+export function createNpyBuffer(data, shape, dtype) {
+  const magic = new Uint8Array([147, 78, 85, 77, 80, 89]);
+  const majorVersion = new Uint8Array([1]);
+  const minorVersion = new Uint8Array([0]);
+
+  const dictStr = `{'descr': '${dtype}', 'fortran_order': False, 'shape': (${shape.join(', ')}${shape.length === 1 ? ',' : ''}), }`;
+  
+  const unpaddedLength = 6 + 2 + 2 + dictStr.length + 1;
+  const paddingLen = (16 - (unpaddedLength % 16)) % 16;
+  const headerStr = dictStr + ' '.repeat(paddingLen) + '\\n';
+  
+  const headerLenBytes = new Uint16Array([headerStr.length]);
+  const headerBytes = new Uint8Array(headerStr.length);
+  for (let i = 0; i < headerStr.length; i++) {
+    headerBytes[i] = headerStr.charCodeAt(i);
+  }
+
+  const outBuffer = new ArrayBuffer(magic.length + 2 + 2 + headerBytes.length + data.byteLength);
+  const outView = new Uint8Array(outBuffer);
+  
+  let offset = 0;
+  outView.set(magic, offset); offset += magic.length;
+  outView.set(majorVersion, offset); offset += majorVersion.length;
+  outView.set(minorVersion, offset); offset += minorVersion.length;
+  outView.set(new Uint8Array(headerLenBytes.buffer), offset); offset += 2;
+  outView.set(headerBytes, offset); offset += headerBytes.length;
+  outView.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), offset);
+  
+  return outBuffer;
+}

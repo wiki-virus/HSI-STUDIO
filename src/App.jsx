@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef } from 'react'
 import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import useAppStore from './stores/useAppStore'
+import { Suspense, lazy } from 'react'
 import LandingPage from './pages/LandingPage'
-import ViewerPage from './pages/ViewerPage'
-
+const ViewerPage = lazy(() => import('./pages/ViewerPage'))
 export default function App() {
   const fileLoaded = useAppStore(s => s.fileLoaded)
   
@@ -17,11 +18,14 @@ export default function App() {
   return (
     <>
       {fileLoaded ? (
-        <ViewerPage datacubeRef={datacubeRef} workerRef={workerRef} inputFormat={inputFormat} />
+        <Suspense fallback={<div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>Loading Viewer...</div>}>
+          <ViewerPage datacubeRef={datacubeRef} workerRef={workerRef} inputFormat={inputFormat} />
+        </Suspense>
       ) : (
         <LandingPage datacubeRef={datacubeRef} workerRef={workerRef} onFormatDetected={setInputFormat} />
       )}
       <Analytics />
+      <SpeedInsights />
     </>
   )
 }

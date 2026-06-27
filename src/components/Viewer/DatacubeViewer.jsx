@@ -13,7 +13,17 @@ import { WebGLBandRenderer } from './WebGLRenderer'
  *  - onPixelClick: (x, y) => void
  *  - renderTick: number — changes when new data arrives (triggers re-render)
  */
-export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixelClick, onCropSelect, renderTick, canvasRef: externalCanvasRef, maskRef: externalMaskRef }) {
+export default function DatacubeViewer({
+  bandImage,
+  rgbImage,
+  bandStats,
+  onPixelClick,
+  onCropSelect,
+  onRoiSelect,
+  renderTick,
+  canvasRef: externalCanvasRef,
+  maskRef: externalMaskRef
+}) {
   const canvasRef = useRef(null)
   const containerRef = useRef(null)
   const rendererRef = useRef(null)
@@ -26,21 +36,22 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
   const rgbBands = useAppStore(s => s.rgbBands)
   const setRGBBands = useAppStore(s => s.setRGBBands)
   const contrast = useAppStore(s => s.contrast)
+  const colormap = useAppStore(s => s.colormap)
   const autoStretch = useAppStore(s => s.autoStretch)
   const zoom = useAppStore(s => s.zoom)
-  const panOffset = useAppStore(s => s.panOffset)
   const setZoom = useAppStore(s => s.setZoom)
+  const panOffset = useAppStore(s => s.panOffset)
   const setPanOffset = useAppStore(s => s.setPanOffset)
   const currentBand = useAppStore(s => s.currentBand)
   const setCurrentBand = useAppStore(s => s.setCurrentBand)
   const annotationMode = useAppStore(s => s.annotationMode)
+  const rois = useAppStore(s => s.rois)
   const brushSize = useAppStore(s => s.brushSize)
   const brushHardness = useAppStore(s => s.brushHardness)
   const showMaskOverlay = useAppStore(s => s.showMaskOverlay)
   const maskOpacity = useAppStore(s => s.maskOpacity)
   const classes = useAppStore(s => s.classes)
   const activeClassId = useAppStore(s => s.activeClassId)
-  const colormap = useAppStore(s => s.colormap)
 
   // Panning state
   const isPanningRef = useRef(false)
@@ -77,6 +88,8 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
   const [cropRect, setCropRect] = useState(null) // { x, y, w, h } in image coords
   const cropStartRef = useRef(null) // starting image coords for rectangle drag
   const isCroppingRef = useRef(false)
+  const isDraggingCropRef = useRef(false)
+  const dragCropOffsetRef = useRef({ dx: 0, dy: 0 })
 
   // ─── Initialize WebGL renderer ───
   useEffect(() => {
@@ -478,12 +491,24 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
       }
       return
     }
-    if (e.button === 0 && annotationMode === 'rectangle') {
+    if (e.button === 0 && (annotationMode === 'rectangle' || annotationMode === 'roi')) {
       const coords = screenToImage(e.clientX, e.clientY)
       if (coords) {
-        isCroppingRef.current = true
-        cropStartRef.current = coords
-        setCropRect({ x: coords.x, y: coords.y, w: 0, h: 0 })
+        // If clicking inside an existing crop box, drag it
+        setCropRect(currentCrop => {
+          if (currentCrop && currentCrop.w > 0 && 
+              coords.x >= currentCrop.x && coords.x <= currentCrop.x + currentCrop.w &&
+              coords.y >= currentCrop.y && coords.y <= currentCrop.y + currentCrop.h) {
+            isDraggingCropRef.current = true
+            dragCropOffsetRef.current = { dx: coords.x - currentCrop.x, dy: coords.y - currentCrop.y }
+            if (containerRef.current) containerRef.current.style.cursor = 'move'
+            return currentCrop
+          }
+          // Otherwise start a new crop box
+          isCroppingRef.current = true
+          cropStartRef.current = coords
+          return { x: coords.x, y: coords.y, w: 0, h: 0 }
+        })
       }
       return
     }
@@ -572,6 +597,19 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
           h: Math.abs(coords.y - sy),
         })
       }
+    } else if (isDraggingCropRef.current && metadata) {
+      const coords = screenToImage(e.clientX, e.clientY)
+      if (coords && dragCropOffsetRef.current) {
+        setCropRect(currentCrop => {
+          if (!currentCrop) return null
+          let newX = coords.x - dragCropOffsetRef.current.dx
+          let newY = coords.y - dragCropOffsetRef.current.dy
+          // Clamp to image bounds
+          newX = Math.max(0, Math.min(metadata.samples - currentCrop.w, newX))
+          newY = Math.max(0, Math.min(metadata.lines - currentCrop.h, newY))
+          return { ...currentCrop, x: newX, y: newY }
+        })
+      }
     }
 
     // Lasso drag
@@ -594,9 +632,23 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
     // Finalize crop rectangle
     if (isCroppingRef.current && cropRect && cropRect.w > 2 && cropRect.h > 2) {
       isCroppingRef.current = false
-      // Report the crop region to parent
-      if (onCropSelect) {
-        onCropSelect(cropRect)
+      if (annotationMode === 'roi') {
+        if (onRoiSelect) onRoiSelect(cropRect)
+        setCropRect(null)
+      } else {
+        // Report the crop region to parent
+        if (onCropSelect) onCropSelect(cropRect)
+      }
+    } else if (isDraggingCropRef.current) {
+      isDraggingCropRef.current = false
+      if (containerRef.current && !isSpaceDownRef.current) {
+        containerRef.current.style.cursor = 'crosshair'
+      }
+      if (annotationMode === 'roi') {
+        if (onRoiSelect && cropRect) onRoiSelect(cropRect)
+        setCropRect(null)
+      } else {
+        if (onCropSelect && cropRect) onCropSelect(cropRect)
       }
     } else {
       isCroppingRef.current = false
@@ -760,6 +812,39 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
             }}
           />
 
+          {/* ROIs overlay */}
+          {rois && rois.length > 0 && metadata && rois.map(roi => (
+            <div
+              key={roi.id}
+              style={{
+                position: 'absolute',
+                left: `${(roi.x / metadata.samples) * 100}%`,
+                top: `${(roi.y / metadata.lines) * 100}%`,
+                width: `${(roi.w / metadata.samples) * 100}%`,
+                height: `${(roi.h / metadata.lines) * 100}%`,
+                border: '2px solid yellow',
+                background: 'rgba(255, 255, 0, 0.1)',
+                pointerEvents: 'none',
+                boxSizing: 'border-box',
+              }}
+            >
+              <span style={{
+                position: 'absolute',
+                top: '-22px',
+                left: '-2px',
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+                color: '#222',
+                background: 'yellow',
+                padding: '1px 6px',
+                borderRadius: 'var(--radius-sm)',
+                whiteSpace: 'nowrap',
+              }}>
+                {roi.name} ({roi.w} × {roi.h})
+              </span>
+            </div>
+          ))}
+
           {/* Crop rectangle overlay */}
           {cropRect && cropRect.w > 0 && cropRect.h > 0 && metadata && (
             <div
@@ -769,8 +854,8 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
                 top: `${(cropRect.y / metadata.lines) * 100}%`,
                 width: `${(cropRect.w / metadata.samples) * 100}%`,
                 height: `${(cropRect.h / metadata.lines) * 100}%`,
-                border: '2px dashed var(--accent-teal)',
-                background: 'rgba(79, 223, 210, 0.08)',
+                border: `2px dashed ${annotationMode === 'roi' ? 'yellow' : 'var(--accent-teal)'}`,
+                background: annotationMode === 'roi' ? 'rgba(255, 255, 0, 0.08)' : 'rgba(79, 223, 210, 0.08)',
                 pointerEvents: 'none',
                 boxSizing: 'border-box',
               }}
@@ -781,8 +866,8 @@ export default function DatacubeViewer({ bandImage, rgbImage, bandStats, onPixel
                 left: '0',
                 fontSize: '11px',
                 fontFamily: 'var(--font-mono)',
-                color: 'var(--accent-teal)',
-                background: 'var(--bg-primary)',
+                color: annotationMode === 'roi' ? '#222' : 'var(--accent-teal)',
+                background: annotationMode === 'roi' ? 'yellow' : 'var(--bg-primary)',
                 padding: '1px 6px',
                 borderRadius: 'var(--radius-sm)',
                 whiteSpace: 'nowrap',

@@ -78,6 +78,9 @@ const useAppStore = create((set, get) => ({
   /** Opacity of the mask overlay (0.0–1.0) */
   maskOpacity: 0.4,
 
+  /** List of regions of interest (ROIs) for batch export */
+  rois: [], // [{ id, name, x, y, w, h }]
+
   /** ML Classes for discrete multi-class annotation */
   classes: [
     { id: 1, name: 'Class 1', color: '#ff4444' }
@@ -100,20 +103,31 @@ const useAppStore = create((set, get) => ({
   // --- File actions ---
   /** Mark a file as loaded and store its metadata; resets band to 0 */
   setFileLoaded: (fileName, metadata, initialMaskData = null) =>
-    set({ fileLoaded: true, fileName, fileNames: [fileName], timeSeries: [metadata], metadata, currentFrame: 0, currentBand: 0, initialMaskData }),
+    set({ 
+      fileLoaded: true, 
+      fileName, 
+      fileNames: [fileName], 
+      timeSeries: [{ ...metadata, originalSamples: metadata.samples, originalLines: metadata.lines }], 
+      metadata: { ...metadata, originalSamples: metadata.samples, originalLines: metadata.lines }, 
+      currentFrame: 0, 
+      currentBand: 0, 
+      initialMaskData 
+    }),
   
   /** Load multiple files for time-series playback */
-  setTimeSeriesLoaded: (fileNames, timeSeriesMetadata, initialMaskData = null) =>
-    set({ 
+  setTimeSeriesLoaded: (fileNames, timeSeriesMetadata, initialMaskData = null) => {
+    const enrichedTimeSeries = timeSeriesMetadata.map(m => ({ ...m, originalSamples: m.samples, originalLines: m.lines }))
+    return set({ 
       fileLoaded: true, 
       fileName: fileNames[0], 
       fileNames, 
-      timeSeries: timeSeriesMetadata, 
-      metadata: timeSeriesMetadata[0], 
+      timeSeries: enrichedTimeSeries, 
+      metadata: enrichedTimeSeries[0], 
       currentFrame: 0, 
       currentBand: 0,
       initialMaskData 
-    }),
+    })
+  },
 
   setCurrentFrame: (frame) => 
     set((s) => ({ 
@@ -183,6 +197,14 @@ const useAppStore = create((set, get) => ({
     activeClassId: s.activeClassId === id ? (s.classes.find(c => c.id !== id)?.id || 1) : s.activeClassId
   })),
 
+  // --- ROI actions ---
+  addRoi: (roi) => set((s) => ({ rois: [...s.rois, roi] })),
+  updateRoi: (id, updates) => set((s) => ({
+    rois: s.rois.map(r => r.id === id ? { ...r, ...updates } : r)
+  })),
+  removeRoi: (id) => set((s) => ({ rois: s.rois.filter(r => r.id !== id) })),
+  clearRois: () => set({ rois: [] }),
+
   // --- Zoom / Pan actions ---
   setZoom:      (zoom) => set({ zoom }),
   setPanOffset: (offset) => set({ panOffset: offset }),
@@ -199,6 +221,7 @@ const useAppStore = create((set, get) => ({
     timeSeries: [],
     initialMaskData: null,
     pinnedSpectra: [],
+    rois: [],
     currentBand: 0,
     currentFrame: 0,
     selectedPixel: null,

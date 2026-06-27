@@ -4,8 +4,9 @@ import {
   Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, Upload, Wand2
 } from 'lucide-react'
 
-export default function Toolbar({ onSave }) {
+export default function Toolbar({ onSave, onResetCrop }) {
   const fileName = useAppStore(s => s.fileName)
+  const metadata = useAppStore(s => s.metadata)
   const viewMode = useAppStore(s => s.viewMode)
   const setViewMode = useAppStore(s => s.setViewMode)
   const annotationMode = useAppStore(s => s.annotationMode)
@@ -14,6 +15,9 @@ export default function Toolbar({ onSave }) {
   const toggleSpectralPlot = useAppStore(s => s.toggleSpectralPlot)
   const resetView = useAppStore(s => s.resetView)
   const closeFile = useAppStore(s => s.closeFile)
+
+  const isCropped = metadata && metadata.originalSamples && 
+    (metadata.samples < metadata.originalSamples || metadata.lines < metadata.originalLines)
 
   const handleOpenFile = () => {
     if (window.confirm("This will replace the current image. Are you sure you want to upload a new file? Any unsaved annotations will be lost.")) {
@@ -42,7 +46,13 @@ export default function Toolbar({ onSave }) {
         </button>
         <div className="toolbar-filename" title={fileName}>
           {fileName || 'Untitled'}
+          {isCropped && <span style={{ marginLeft: 8, color: 'var(--accent-teal)', fontSize: '11px' }}>(Cropped)</span>}
         </div>
+        {isCropped && (
+          <button className="toolbar-btn toolbar-btn-text" onClick={onResetCrop} style={{ fontSize: '11px', padding: '2px 6px' }}>
+            Reset Crop
+          </button>
+        )}
       </div>
 
       <div className="toolbar-divider" />
@@ -52,14 +62,12 @@ export default function Toolbar({ onSave }) {
         <button
           className={`toolbar-btn toolbar-btn-text ${viewMode === 'single' ? 'active' : ''}`}
           onClick={() => setViewMode('single')}
-          title="Single Band View"
         >
           <Layers size={16} /> Single Band
         </button>
         <button
           className={`toolbar-btn toolbar-btn-text ${viewMode === 'rgb' ? 'active' : ''}`}
           onClick={() => setViewMode('rgb')}
-          title="RGB Composite View"
         >
           <Palette size={16} /> RGB Composite
         </button>
@@ -67,12 +75,12 @@ export default function Toolbar({ onSave }) {
 
       <div className="toolbar-divider" />
 
-      {/* View & Crop */}
+      {/* Basic Tools */}
       <div className="toolbar-group">
         <button
           className={`toolbar-btn toolbar-btn-text ${annotationMode === 'view' ? 'active' : ''}`}
           onClick={() => setAnnotationMode('view')}
-          title="View Mode"
+          title="View / Pan"
         >
           <MousePointer2 size={16} /> View
         </button>
@@ -82,6 +90,13 @@ export default function Toolbar({ onSave }) {
           title="Crop / Rectangle Select"
         >
           <Crop size={16} /> Crop
+        </button>
+        <button
+          className={`toolbar-btn toolbar-btn-text ${annotationMode === 'roi' ? 'active' : ''}`}
+          onClick={() => setAnnotationMode('roi')}
+          title="Draw Region of Interest (ROI)"
+        >
+          🎯 ROI
         </button>
       </div>
 

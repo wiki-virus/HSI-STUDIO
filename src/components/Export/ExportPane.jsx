@@ -1,15 +1,16 @@
 import { useState, useCallback, useEffect } from 'react'
+import { X, Archive, Database, FileSpreadsheet, Image as ImageIcon, PaintBucket, Layers, FileBox, CheckCircle2 } from 'lucide-react'
 import useAppStore from '../../stores/useAppStore'
 
 const EXPORT_FORMATS = [
-  { id: 'npz',       label: 'NumPy Archive (.npz)',      group: 'Full Datacube' },
-  { id: 'envi',      label: 'ENVI (.hdr + .dat)',        group: 'Full Datacube' },
-  { id: 'png-view',  label: 'Current View (PNG)',        group: 'Image Export' },
-  { id: 'mask-png',  label: 'Annotation Mask (PNG)',     group: 'Mask Export' },
-  { id: 'mask-npz',  label: 'Annotation Mask (NPZ)',     group: 'Mask Export' },
-  { id: 'mask-raw',  label: 'Annotation Mask (Raw Binary)', group: 'Mask Export' },
+  { id: 'npz',       label: 'NumPy Archive (.npz)',      group: 'Full Datacube', icon: Archive, desc: 'Saves full datacube, wavelengths, and mask. (Python compatible)' },
+  { id: 'envi',      label: 'ENVI (.hdr + .dat)',        group: 'Full Datacube', icon: Database, desc: 'Standard format for ENVI, MATLAB, and remote sensing tools.' },
+  { id: 'csv',       label: 'Pixel-wise Data (.csv)',    group: 'Full Datacube', icon: FileSpreadsheet, desc: 'Exports all pixels + bands. Adds mask Class if present.' },
+  { id: 'png-view',  label: 'Current View (PNG)',        group: 'Image Export', icon: ImageIcon, desc: 'Saves a screenshot of the currently displayed band view.' },
+  { id: 'mask-png',  label: 'Annotation Mask (PNG)',     group: 'Mask Export', icon: PaintBucket, desc: 'Grayscale image of mask (white = annotated, black = back).' },
+  { id: 'mask-npz',  label: 'Annotation Mask (NPZ)',     group: 'Mask Export', icon: FileBox, desc: 'NumPy array of the mask inside a .npz file.' },
+  { id: 'mask-raw',  label: 'Annotation Mask (Raw)',     group: 'Mask Export', icon: Layers, desc: 'Raw binary file of the annotation mask.' },
 ]
-
 export default function ExportPane({
   workerRef,
   canvasRef,
@@ -206,6 +207,90 @@ export default function ExportPane({
           setStatusMsg('✓ NPZ Saved!')
           break
         }
+        // ─── Pixel-wise CSV ───
+        case 'csv': {
+          const worker = workerRef?.current
+          if (!worker) throw new Error('Worker not available')
+
+          setStatusMsg('Extracting BSQ datacube...')
+          const msg = await new Promise((resolve, reject) => {
+            const handler = (e) => {
+              if (e.data.type === 'datacubeExport') {
+                worker.removeEventListener('message', handler)
+                resolve(e.data)
+              } else if (e.data.type === 'error') {
+                worker.removeEventListener('message', handler)
+                reject(new Error(e.data.message))
+              }
+            }
+            worker.addEventListener('message', handler)
+            worker.postMessage({ type: 'exportDatacube' })
+            setTimeout(() => {
+              worker.removeEventListener('message', handler)
+              reject(new Error('Export timed out'))
+            }, 30000)
+          })
+
+          setStatusMsg('Formatting CSV data...')
+          const { bands, lines, samples } = metadata
+          const data = new Float32Array(msg.data)
+          const mask = maskRef?.current
+          
+          await new Promise(r => setTimeout(r, 50))
+          
+          const header = ['Pixel_X', 'Pixel_Y']
+          for (let b = 0; b < bands; b++) {
+            header.push(`Band_${b+1}`)
+          }
+          // Only add Class if there is ANY mask drawn
+          let hasMask = false
+          if (mask) {
+            for (let i = 0; i < mask.length; i++) {
+              if (mask[i] > 0) {
+                hasMask = true
+                break
+              }
+            }
+          }
+          if (hasMask) {
+            header.push('Class')
+          }
+          
+          const chunks = []
+          chunks.push(header.join(',') + '\n')
+          
+          const totalPixels = lines * samples
+          const chunkSize = 10000
+          
+          for (let i = 0; i < totalPixels; i += chunkSize) {
+            setStatusMsg(`Formatting CSV... ${Math.round((i / totalPixels) * 100)}%`)
+            await new Promise(r => setTimeout(r, 0))
+            
+            let chunkStr = ''
+            const end = Math.min(i + chunkSize, totalPixels)
+            for (let p = i; p < end; p++) {
+              const y = Math.floor(p / samples)
+              const x = p % samples
+              let rowStr = `${x},${y},`
+              for (let b = 0; b < bands; b++) {
+                 // BSQ index: b * (lines * samples) + p
+                 rowStr += data[b * totalPixels + p]
+                 if (b < bands - 1 || hasMask) rowStr += ','
+              }
+              if (hasMask) {
+                 rowStr += mask[p] || 0
+              }
+              chunkStr += rowStr + '\n'
+            }
+            chunks.push(chunkStr)
+          }
+          
+          setStatusMsg('Saving CSV file...')
+          const blob = new Blob(chunks, { type: 'text/csv' })
+          triggerDownload(blob, `${baseName}.csv`)
+          setStatusMsg('✓ Saved!')
+          break
+        }
 
         // ─── Full ENVI Archive ───
         case 'envi': {
@@ -269,7 +354,7 @@ byte order = 0`
 
   return (
     <div style={{
-      width: '320px',
+      width: '400px',
       background: 'var(--bg-secondary)',
       borderLeft: 'var(--border-default)',
       display: 'flex',
@@ -288,55 +373,88 @@ byte order = 0`
             border: 'none',
             color: 'var(--text-secondary)',
             fontSize: 'var(--font-xl)',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: 'var(--radius-sm)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'none'}
         >
-          ×
+          <X size={20} />
         </button>
       </div>
 
-      <div style={{ marginBottom: 'var(--space-md)' }}>
-        <label style={{ display: 'block', fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-xs)' }}>
-          Format
-        </label>
-        <select
-          value={selectedFormat}
-          onChange={e => {
-            setSelectedFormat(e.target.value)
-            setStatusMsg('')
-          }}
-          disabled={saving}
-          style={{
-            width: '100%',
-            background: 'var(--bg-tertiary)',
-            color: 'var(--text-primary)',
-            border: 'var(--border-default)',
-            borderRadius: 'var(--radius-md)',
-            padding: 'var(--space-sm) var(--space-md)',
-            fontSize: 'var(--font-sm)',
-            cursor: 'pointer',
-          }}
-        >
-          <optgroup label="Full Datacube">
-            {EXPORT_FORMATS.filter(f => f.group === 'Full Datacube').map(f => (
-              <option key={f.id} value={f.id}>{f.label}</option>
-            ))}
-          </optgroup>
-          <optgroup label="Image Export">
-            {EXPORT_FORMATS.filter(f => f.group === 'Image Export').map(f => (
-              <option key={f.id} value={f.id}>{f.label}</option>
-            ))}
-          </optgroup>
-          <optgroup label="Mask Export">
-            {EXPORT_FORMATS.filter(f => f.group === 'Mask Export').map(f => (
-              <option key={f.id} value={f.id}>{f.label}</option>
-            ))}
-          </optgroup>
-        </select>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
+        {['Full Datacube', 'Mask Export', 'Image Export'].map(groupName => (
+          <div key={groupName}>
+            <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>
+              {groupName}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+              {EXPORT_FORMATS.filter(f => f.group === groupName).map(f => {
+                const isSelected = selectedFormat === f.id;
+                const Icon = f.icon;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => { setSelectedFormat(f.id); setStatusMsg(''); }}
+                    disabled={saving}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 'var(--space-sm)',
+                      padding: 'var(--space-sm)',
+                      background: isSelected ? 'var(--bg-tertiary)' : 'transparent',
+                      border: `1px solid ${isSelected ? 'var(--accent-teal)' : 'var(--border-default)'}`,
+                      borderRadius: 'var(--radius-md)',
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      opacity: saving ? 0.5 : 1,
+                      textAlign: 'left',
+                      transition: 'all 0.2s ease',
+                      boxShadow: isSelected ? '0 0 0 1px var(--accent-teal)' : 'none',
+                    }}
+                    onMouseEnter={e => {
+                      if (!saving && !isSelected) {
+                        e.currentTarget.style.background = 'var(--bg-tertiary)';
+                        e.currentTarget.style.borderColor = 'var(--text-secondary)';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (!saving && !isSelected) {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'var(--border-default)';
+                      }
+                    }}
+                  >
+                    <div style={{ color: isSelected ? 'var(--accent-teal)' : 'var(--text-secondary)', marginTop: '2px' }}>
+                      <Icon size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 'var(--font-sm)', fontWeight: 500, color: isSelected ? 'var(--text-primary)' : 'var(--text-primary)', marginBottom: '2px' }}>
+                        {f.label}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
+                        {f.desc}
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <div style={{ marginLeft: 'auto', color: 'var(--accent-teal)', display: 'flex', alignItems: 'center', height: '100%' }}>
+                        <CheckCircle2 size={16} />
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {selectedFormat === 'png-view' && (
-        <div style={{ marginBottom: 'var(--space-md)', padding: 'var(--space-sm) 0' }}>
+        <div style={{ marginBottom: 'var(--space-md)', padding: 'var(--space-sm)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>
             <input 
               type="checkbox" 
@@ -348,24 +466,6 @@ byte order = 0`
           </label>
         </div>
       )}
-
-      {/* Format description */}
-      <div style={{
-        fontSize: 'var(--font-xs)',
-        color: 'var(--text-tertiary)',
-        background: 'var(--bg-tertiary)',
-        borderRadius: 'var(--radius-sm)',
-        padding: 'var(--space-sm) var(--space-md)',
-        marginBottom: 'var(--space-lg)',
-        lineHeight: 1.5,
-      }}>
-        {selectedFormat === 'npz' && '💾 Saves the full datacube, wavelengths, and annotation mask as a compressed NumPy archive. Compatible with Python/NumPy.'}
-        {selectedFormat === 'envi' && '💾 Saves as ENVI format (.hdr header + .dat binary). Standard format for ENVI, MATLAB, and many remote sensing tools.'}
-        {selectedFormat === 'png-view' && '🖼️ Saves a screenshot of the currently displayed band/composite view as a PNG image.'}
-        {selectedFormat === 'mask-png' && '🎭 Exports only the annotation mask as a grayscale PNG (white = annotated, black = background).'}
-        {selectedFormat === 'mask-npz' && '🎭 Exports only the annotation mask as a NumPy array inside a .npz file.'}
-        {selectedFormat === 'mask-raw' && '🎭 Exports the raw annotation mask as a flat binary file (uint8, row-major).'}
-      </div>
 
       {/* Status */}
       {statusMsg && (

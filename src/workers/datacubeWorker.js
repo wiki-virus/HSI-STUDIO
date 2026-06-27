@@ -19,6 +19,7 @@ let frames = []; // Array of { datacube: Float32Array, meta: object }
 // point to the active frame (usually frame 0).
 let datacube = null;   
 let meta     = null;   
+let originalFrames = []; // To support crop reset
 
 // ---------------------------------------------------------------------------
 // Message router
@@ -47,6 +48,12 @@ self.onmessage = function (e) {
       break;
     case 'cropDatacube':
       handleCropDatacube(e.data);
+      break;
+    case 'resetCrop':
+      handleResetCrop();
+      break;
+    case 'batchExportRois':
+      handleBatchExportRois(e.data);
       break;
     case 'magicWand':
       handleMagicWand(e.data);
@@ -77,6 +84,7 @@ const ENVI_DTYPE_MAP = {
 function handleLoadData({ buffer, metadata }) {
   const dc = createFloat32Datacube(buffer, metadata);
   frames = [{ datacube: dc, meta: metadata }];
+  originalFrames = [{ datacube: dc, meta: { ...metadata } }];
   datacube = dc;
   meta = metadata;
 
@@ -96,6 +104,7 @@ function handleLoadTimeSeries({ series }) {
     meta: frame.metadata,
     datacube: createFloat32Datacube(frame.buffer, frame.metadata)
   }));
+  originalFrames = frames.map(f => ({ datacube: f.datacube, meta: { ...f.meta } }));
 
   if (frames.length > 0) {
     datacube = frames[0].datacube;
@@ -513,6 +522,83 @@ function handleCropDatacube({ x, y, width, height }) {
     cropX: x0,
     cropY: y0
   });
+}
+
+// ---------------------------------------------------------------------------
+// resetCrop — restore the original full-size datacube
+// ---------------------------------------------------------------------------
+function handleResetCrop() {
+  if (originalFrames.length === 0) {
+    self.postMessage({ type: 'error', message: 'No original datacube found to reset to.' });
+    return;
+  }
+  
+  // Restore frames from original reference
+  frames = originalFrames.map(f => ({ datacube: f.datacube, meta: { ...f.meta } }));
+  datacube = frames[0].datacube;
+  meta = frames[0].meta;
+  
+  self.postMessage({
+    type: 'datacubeCropped',
+    samples: meta.samples,
+    lines: meta.lines,
+    bands: meta.bands,
+    cropX: 0,
+    cropY: 0,
+    isReset: true
+  });
+}
+
+// ---------------------------------------------------------------------------
+// batchExportRois — extract multiple ROIs from the original datacube
+// ---------------------------------------------------------------------------
+function handleBatchExportRois({ rois, frameIndex = 0 }) {
+  if (!datacube) return;
+  
+  // Extract from the CURRENT active frame so that ROI coordinates match perfectly.
+  const frame = frames[frameIndex] || { datacube, meta };
+  const { samples, lines, bands } = frame.meta;
+  
+  const extractedRois = rois.map(roi => {
+    // clamp ROI
+    const x0 = Math.max(0, Math.floor(roi.x));
+    const y0 = Math.max(0, Math.floor(roi.y));
+    const x1 = Math.min(samples, x0 + Math.floor(roi.w));
+    const y1 = Math.min(lines, y0 + Math.floor(roi.h));
+    const newW = x1 - x0;
+    const newH = y1 - y0;
+    
+    if (newW <= 0 || newH <= 0) return null;
+    
+    const newSize = newW * newH * bands;
+    const cropped = new Float32Array(newSize);
+    const { sampleStride, lineStride, bandStride } = getStrides(samples, lines, bands, frame.meta);
+    
+    let outIdx = 0;
+    for (let line = y0; line < y1; line++) {
+      const lineBase = line * lineStride;
+      for (let sample = x0; sample < x1; sample++) {
+        const sampleBase = lineBase + sample * sampleStride;
+        for (let band = 0; band < bands; band++) {
+          cropped[outIdx++] = frame.datacube[sampleBase + band * bandStride];
+        }
+      }
+    }
+    
+    return {
+      id: roi.id,
+      name: roi.name,
+      x: roi.x,
+      y: roi.y,
+      w: newW,
+      h: newH,
+      buffer: cropped.buffer,
+      meta: { ...frame.meta, samples: newW, lines: newH, interleave: 'bip' }
+    };
+  }).filter(Boolean);
+  
+  const transferables = extractedRois.map(r => r.buffer);
+  self.postMessage({ type: 'roisExported', rois: extractedRois }, transferables);
 }
 
 // ---------------------------------------------------------------------------

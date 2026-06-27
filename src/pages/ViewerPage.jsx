@@ -112,10 +112,13 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
         }
 
         case 'datacubeCropped': {
-          const { samples, lines, bands, cropX, cropY } = e.data
+          const { samples, lines, bands, cropX, cropY, isReset } = e.data
           
-          // Crop the annotation mask to match the new image dimensions
-          if (viewerMaskRef.current && metadata) {
+          if (isReset) {
+            // Reset the mask when uncropping
+            viewerMaskRef.current = new Uint8Array(samples * lines)
+          } else if (viewerMaskRef.current && metadata) {
+             // Crop the annotation mask to match the new image dimensions
              const oldMask = viewerMaskRef.current
              const newMask = new Uint8Array(samples * lines)
              const oldWidth = metadata.samples
@@ -135,7 +138,9 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
             bands,
             interleave: 'bip',
           }
-          setFileLoaded(fileName + ' (cropped)', newMeta)
+          
+          const newName = isReset ? fileName.replace(' (cropped)', '') : fileName + ' (cropped)'
+          setFileLoaded(newName, newMeta)
           setCropRegion(null)
           
           // Reset view state that might be invalid
@@ -143,8 +148,8 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
           useAppStore.getState().clearPinnedSpectra()
           useAppStore.getState().setSelectedPixel(null)
 
-          // Request fresh band
-          worker.postMessage({ type: 'extractBand', bandIndex: 0 })
+          // Request the new band 0
+          worker.postMessage({ type: 'extractBand', bandIndex: 0, frameIndex: currentFrame })
           break
         }
 
@@ -159,6 +164,51 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
             }
             setRenderTick(t => t + 1)
           }
+          break
+        }
+
+        case 'roisExported': {
+          const { rois } = e.data
+          import('jszip').then(async ({ default: JSZip }) => {
+            const zip = new JSZip()
+            const { createNpyBuffer } = await import('../lib/npzParser')
+            
+            for (const roi of rois) {
+               const arr = new Float32Array(roi.buffer)
+               // The worker wrote it as BIP: [lines, samples, bands]
+               const npyBuf = createNpyBuffer(arr, [roi.meta.lines, roi.meta.samples, roi.meta.bands], '<f4', false)
+               
+               const innerZip = new JSZip()
+               innerZip.file('datacube.npy', npyBuf)
+               
+               // Check if there is an annotation mask, crop it to the ROI
+               if (viewerMaskRef.current && metadata) {
+                 const fullMask = viewerMaskRef.current
+                 // roi.w and roi.h came from the worker calculation
+                 const patchMask = new Uint8Array(roi.w * roi.h)
+                 for (let y = 0; y < roi.h; y++) {
+                   for (let x = 0; x < roi.w; x++) {
+                     patchMask[y * roi.w + x] = fullMask[(roi.y + y) * metadata.samples + (roi.x + x)] || 0
+                   }
+                 }
+                 const maskNpy = createNpyBuffer(patchMask, [roi.h, roi.w], '|u1', false)
+                 innerZip.file('mask.npy', maskNpy)
+               }
+               
+               const npzBlob = await innerZip.generateAsync({ type: 'blob', compression: 'STORE' })
+               zip.file(`${roi.name.replace(/[^a-z0-9]/gi, '_')}.npz`, npzBlob)
+            }
+            const content = await zip.generateAsync({ type: 'blob' })
+            const url = URL.createObjectURL(content)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `${fileName}_ROIs.zip`
+            a.click()
+            URL.revokeObjectURL(url)
+          }).catch(err => {
+            alert('Failed to export ROIs: ' + err.message)
+            console.error(err)
+          })
           break
         }
 
@@ -311,10 +361,23 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
 
   return (
     <div className="app-layout">
-      <Toolbar onSave={() => setShowExportPane(true)} />
+      <Toolbar 
+        onSave={() => setShowExportPane(true)} 
+        onResetCrop={() => {
+          if (workerRef.current) {
+            workerRef.current.postMessage({ type: 'resetCrop' })
+          }
+        }}
+      />
 
       <div className="app-main">
-        <Sidebar />
+        <Sidebar 
+          onBatchExportRois={(rois) => {
+            if (workerRef.current) {
+              workerRef.current.postMessage({ type: 'batchExportRois', rois })
+            }
+          }}
+        />
 
         <div className="viewer-area">
           <Timeline />
@@ -324,6 +387,17 @@ export default function ViewerPage({ datacubeRef, workerRef, inputFormat }) {
             bandStats={bandStats}
             onPixelClick={handlePixelClick}
             onCropSelect={(rect) => setCropRegion(rect)}
+            onRoiSelect={(rect) => {
+              const state = useAppStore.getState()
+              state.addRoi({
+                id: Math.random().toString(36).substring(2, 9),
+                name: `Crop ${state.rois.length + 1}`,
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                w: Math.round(rect.w),
+                h: Math.round(rect.h)
+              })
+            }}
             renderTick={renderTick}
             canvasRef={viewerCanvasRef}
             maskRef={viewerMaskRef}
