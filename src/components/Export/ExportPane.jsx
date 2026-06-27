@@ -28,7 +28,7 @@ export default function ExportPane({
 
   // ─── CSV class-column options ───
   const [showCsvConfig, setShowCsvConfig] = useState(false)
-  const [csvClassFormat, setCsvClassFormat] = useState('id-name') // 'id-name' | 'name'
+  const [csvClassFormat, setCsvClassFormat] = useState('id-name') // 'id-name' | 'id' | 'name'
   const [defaultClassName, setDefaultClassName] = useState('')
 
   const triggerDownload = useCallback((blob, filename) => {
@@ -273,11 +273,8 @@ export default function ExportPane({
             }
           }
           if (hasMask) {
-            if (csvClassFormat === 'name') {
-              header.push('Class')
-            } else {
-              header.push('Class', 'Class_Name')
-            }
+            if (csvClassFormat === 'id-name') header.push('Class', 'Class_Name')
+            else header.push('Class')
           }
 
           const chunks = []
@@ -303,11 +300,9 @@ export default function ExportPane({
               }
               if (hasMask) {
                  const id = mask[p] || 0
-                 if (csvClassFormat === 'name') {
-                   rowStr += csvEscape(nameFor(id) || String(id))
-                 } else {
-                   rowStr += `${id},${csvEscape(nameFor(id))}`
-                 }
+                 if (csvClassFormat === 'id') rowStr += id
+                 else if (csvClassFormat === 'name') rowStr += csvEscape(nameFor(id) || String(id))
+                 else rowStr += `${id},${csvEscape(nameFor(id))}`
               }
               chunkStr += rowStr + '\n'
             }
@@ -601,7 +596,8 @@ byte order = 0`
               {/* Format choice */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
                 {[
-                  { id: 'id-name', label: 'Class id + name', desc: 'Numeric "Class" column plus a "Class_Name" column.' },
+                  { id: 'id-name', label: 'Class id + name (recommended)', desc: 'Numeric "Class" column plus a "Class_Name" column. Re-imports cleanly.' },
+                  { id: 'id', label: 'Class id only', desc: 'Single numeric "Class" column.' },
                   { id: 'name', label: 'Class name only', desc: 'Single "Class" column holding the class name.' },
                 ].map(opt => {
                   const active = csvClassFormat === opt.id
@@ -634,6 +630,29 @@ byte order = 0`
                   )
                 })}
               </div>
+
+              {/* Re-import warning for lossy formats */}
+              {csvClassFormat !== 'id-name' && (
+                <div style={{
+                  display: 'flex',
+                  gap: 'var(--space-sm)',
+                  alignItems: 'flex-start',
+                  background: 'rgba(255, 140, 66, 0.1)',
+                  border: '1px solid var(--accent-orange)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: 'var(--space-sm) var(--space-md)',
+                  fontSize: 'var(--font-xs)',
+                  color: 'var(--text-secondary)',
+                  lineHeight: 1.5,
+                }}>
+                  <AlertCircle size={14} style={{ color: 'var(--accent-orange)', flexShrink: 0, marginTop: 1 }} />
+                  <span>
+                    {csvClassFormat === 'id'
+                      ? 'Class names are not stored, so re-importing restores the mask but class names will be generic.'
+                      : 'Re-importing keeps the class names but assigns new ids, so the original class ids may differ.'}
+                  </span>
+                </div>
+              )}
 
               {/* Optional default (background) class name */}
               <div>

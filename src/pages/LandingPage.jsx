@@ -301,8 +301,8 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
     setLoadingStatus('Parsing CSV...')
     const text = await csvFile.text()
     const { parseCsv } = await import('../lib/csvParser')
-    const { datacube, metadata, mask } = parseCsv(text)
-    const series = [{ buffer: datacube.buffer, metadata, maskBuffer: mask, fileName: csvFile.name.replace(/\.csv$/i, '') }]
+    const { datacube, metadata, mask, classNames } = parseCsv(text)
+    const series = [{ buffer: datacube.buffer, metadata, maskBuffer: mask, classNames, fileName: csvFile.name.replace(/\.csv$/i, '') }]
     await initWorkerTimeSeries(series)
   }
 
@@ -336,12 +336,14 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
           setIsLoading(false)
           
           const setTimeSeriesLoaded = useAppStore.getState().setTimeSeriesLoaded
-          // Pass mask data from the first file (if any)
+          // Pass mask data and any imported class names from the first file
           const firstMask = series[0]?.maskBuffer || null
+          const firstClassNames = series[0]?.classNames || null
           setTimeSeriesLoaded(
             series.map(s => s.fileName),
             series.map(s => s.metadata),
-            firstMask
+            firstMask,
+            firstClassNames
           )
           resolve()
         } else if (e.data.type === 'error') {

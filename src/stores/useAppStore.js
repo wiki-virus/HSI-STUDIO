@@ -37,6 +37,8 @@ const useAppStore = create((set) => ({
   metadata: null,
   /** Any mask data found inside the uploaded file */
   initialMaskData: null,
+  /** Class id → name map imported alongside a mask (e.g. from CSV) */
+  initialClassNames: null,
 
   // -----------------------------------------------------------------------
   // 2. Viewer state
@@ -102,30 +104,32 @@ const useAppStore = create((set) => ({
 
   // --- File actions ---
   /** Mark a file as loaded and store its metadata; resets band to 0 */
-  setFileLoaded: (fileName, metadata, initialMaskData = null) =>
-    set({ 
-      fileLoaded: true, 
-      fileName, 
-      fileNames: [fileName], 
-      timeSeries: [{ ...metadata, originalSamples: metadata.samples, originalLines: metadata.lines }], 
-      metadata: { ...metadata, originalSamples: metadata.samples, originalLines: metadata.lines }, 
-      currentFrame: 0, 
-      currentBand: 0, 
-      initialMaskData 
+  setFileLoaded: (fileName, metadata, initialMaskData = null, initialClassNames = null) =>
+    set({
+      fileLoaded: true,
+      fileName,
+      fileNames: [fileName],
+      timeSeries: [{ ...metadata, originalSamples: metadata.samples, originalLines: metadata.lines }],
+      metadata: { ...metadata, originalSamples: metadata.samples, originalLines: metadata.lines },
+      currentFrame: 0,
+      currentBand: 0,
+      initialMaskData,
+      initialClassNames
     }),
   
   /** Load multiple files for time-series playback */
-  setTimeSeriesLoaded: (fileNames, timeSeriesMetadata, initialMaskData = null) => {
+  setTimeSeriesLoaded: (fileNames, timeSeriesMetadata, initialMaskData = null, initialClassNames = null) => {
     const enrichedTimeSeries = timeSeriesMetadata.map(m => ({ ...m, originalSamples: m.samples, originalLines: m.lines }))
-    return set({ 
-      fileLoaded: true, 
-      fileName: fileNames[0], 
-      fileNames, 
-      timeSeries: enrichedTimeSeries, 
-      metadata: enrichedTimeSeries[0], 
-      currentFrame: 0, 
+    return set({
+      fileLoaded: true,
+      fileName: fileNames[0],
+      fileNames,
+      timeSeries: enrichedTimeSeries,
+      metadata: enrichedTimeSeries[0],
+      currentFrame: 0,
       currentBand: 0,
-      initialMaskData 
+      initialMaskData,
+      initialClassNames
     })
   },
 
@@ -220,6 +224,7 @@ const useAppStore = create((set) => ({
     fileNames: [], 
     timeSeries: [],
     initialMaskData: null,
+    initialClassNames: null,
     pinnedSpectra: [],
     rois: [],
     currentBand: 0,

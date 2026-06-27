@@ -129,13 +129,15 @@ export default function DatacubeViewer({
           }
         }
         
-        // Add any discovered classes that aren't already in the store
+        // Add any discovered classes that aren't already in the store,
+        // preferring imported names (e.g. from a CSV Class_Name column).
         const addClass = useAppStore.getState().addClass
+        const importedNames = useAppStore.getState().initialClassNames || {}
         foundIds.forEach(id => {
           if (!existingIds.has(id)) {
             // Generate a random bright color
             const color = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
-            addClass({ id, name: `Imported Class ${id}`, color })
+            addClass({ id, name: importedNames[id] || `Imported Class ${id}`, color })
           }
         })
 

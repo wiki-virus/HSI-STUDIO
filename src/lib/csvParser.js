@@ -150,6 +150,7 @@ function parseTransposed(headers, rows) {
   return {
     datacube,
     mask: null,
+    classNames: null,
     metadata: {
       samples,
       lines: linesCount,
@@ -222,9 +223,16 @@ function parseWide(headers, rows) {
   // Rows are laid out in the same sequential order as datacube pixels, which
   // matches the viewer's mask indexing (y * samples + x), so the i-th row maps
   // to mask index i.
+  let nameCol = null
+  for (let i = 0; i < headers.length; i++) {
+    if (CLASS_NAME_PATTERN.test((headers[i] || '').trim())) { nameCol = i; break }
+  }
+
   let mask = null
+  let classNames = null
   if (columnInfo.labelCol !== null) {
     const m = new Uint8Array(samples * linesCount)
+    const namesById = {}
     let hasClass = false
     // Class column may hold numeric ids ("1") or class names ("Bruise").
     // Names are mapped to stable sequential ids; '' and '0' are background.
@@ -237,21 +245,32 @@ function parseWide(headers, rows) {
       let id
       if (Number.isInteger(num) && num > 0) {
         id = num
+        // Name carried in a separate Class_Name column, if present.
+        if (nameCol !== null && !namesById[id]) {
+          const nm = (rows[i][nameCol] ?? '').trim()
+          if (nm) namesById[id] = nm
+        }
       } else {
+        // The label itself is the class name.
         if (!nameToId.has(raw)) nameToId.set(raw, nextId++)
         id = nameToId.get(raw)
+        if (!namesById[id]) namesById[id] = raw
       }
       if (id > 0 && id < 256) {
         m[i] = id
         hasClass = true
       }
     }
-    if (hasClass) mask = m
+    if (hasClass) {
+      mask = m
+      if (Object.keys(namesById).length > 0) classNames = namesById
+    }
   }
 
   return {
     datacube,
     mask,
+    classNames,
     metadata: {
       samples,
       lines: linesCount,
@@ -281,6 +300,7 @@ const COORD_Y_PATTERNS = /^(y|row|line|pixel_y|py|y_coord|y_pos|latitude|lat|nor
 const SKIP_PATTERNS = /^(id|index|idx|class|label|category|target|mask|gt|ground_truth|name|filename|file|timestamp|date|time)$/i
 const LABEL_PATTERNS = /^(class|label|category|target|mask|gt|ground_truth|classification)$/i
 const BAND_NAME_PATTERN = /^band[_\s]?(\d+)$/i
+const CLASS_NAME_PATTERN = /^(class[_\s]?name|classname|label[_\s]?name|category[_\s]?name)$/i
 const WAVELENGTH_PATTERN = /^(\d+\.?\d*)\s*(nm|um|μm)?$/
 
 function classifyColumns(headers, rows) {
