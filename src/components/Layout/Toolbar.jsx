@@ -1,10 +1,12 @@
 import useAppStore from '../../stores/useAppStore'
-import { 
-  Layers, Palette, MousePointer2, Crop, Paintbrush, 
-  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, Upload, Wand2
+import { undoMask, redoMask } from '../../stores/useAppStore'
+import {
+  Layers, Palette, MousePointer2, Crop, Paintbrush,
+  Eraser, Hexagon, Lasso, Save, RotateCcw, LineChart, Upload, Wand2, Undo2, Redo2
 } from 'lucide-react'
+import FeedbackWidget from '../Feedback/FeedbackWidget'
 
-export default function Toolbar({ onSave, onResetCrop }) {
+export default function Toolbar({ onSave, onResetCrop, maskRef }) {
   const fileName = useAppStore(s => s.fileName)
   const metadata = useAppStore(s => s.metadata)
   const viewMode = useAppStore(s => s.viewMode)
@@ -15,6 +17,8 @@ export default function Toolbar({ onSave, onResetCrop }) {
   const toggleSpectralPlot = useAppStore(s => s.toggleSpectralPlot)
   const resetView = useAppStore(s => s.resetView)
   const closeFile = useAppStore(s => s.closeFile)
+  const undoCount = useAppStore(s => s.undoCount)
+  const redoCount = useAppStore(s => s.redoCount)
 
   const isCropped = metadata && metadata.originalSamples && 
     (metadata.samples < metadata.originalSamples || metadata.lines < metadata.originalLines)
@@ -146,7 +150,27 @@ export default function Toolbar({ onSave, onResetCrop }) {
         )}
       </div>
 
-      {/* Spacer pushes remaining items to the right */}
+      {/* Undo / Redo */}
+      <div className="toolbar-group">
+        <button
+          className="toolbar-btn"
+          onClick={() => { if (undoMask(maskRef)) {} }}
+          disabled={undoCount === 0}
+          title="Undo (Ctrl+Z)"
+          style={{ opacity: undoCount === 0 ? 0.35 : 1 }}
+        >
+          <Undo2 size={18} />
+        </button>
+        <button
+          className="toolbar-btn"
+          onClick={() => { if (redoMask(maskRef)) {} }}
+          disabled={redoCount === 0}
+          title="Redo (Ctrl+Y)"
+          style={{ opacity: redoCount === 0 ? 0.35 : 1 }}
+        >
+          <Redo2 size={18} />
+        </button>
+      </div>
       <div className="toolbar-spacer" />
 
       {/* Right side controls */}
@@ -179,6 +203,10 @@ export default function Toolbar({ onSave, onResetCrop }) {
         >
           <Save size={16} /> Save
         </button>
+
+        <div className="toolbar-divider" />
+
+        <FeedbackWidget label="Feedback" />
 
         <div className="toolbar-divider" />
 

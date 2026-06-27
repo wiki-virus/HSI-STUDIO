@@ -99,6 +99,22 @@ const useAppStore = create((set) => ({
   panOffset: { x: 0, y: 0 },
 
   // -----------------------------------------------------------------------
+  // 6. Undo / Redo (mask history)
+  // -----------------------------------------------------------------------
+  /** Counter that increments on undo/redo to trigger mask redraws */
+  undoRedoTick: 0,
+  /** Number of undo steps available (for UI button state) */
+  undoCount: 0,
+  /** Number of redo steps available (for UI button state) */
+  redoCount: 0,
+
+  // -----------------------------------------------------------------------
+  // 7. Derived band / Band Math
+  // -----------------------------------------------------------------------
+  /** Currently active derived band image (null when showing normal bands) */
+  derivedBand: null, // { data: Float32Array, label: string }
+
+  // -----------------------------------------------------------------------
   // 6. Actions
   // -----------------------------------------------------------------------
 
@@ -216,22 +232,93 @@ const useAppStore = create((set) => ({
   /** Reset the viewport to default zoom and position */
   resetView: () => set({ zoom: 1.0, panOffset: { x: 0, y: 0 } }),
 
+  // --- Derived band actions ---
+  setDerivedBand: (band) => set({ derivedBand: band }),
+  clearDerivedBand: () => set({ derivedBand: null }),
+
   /** Close the current file and return to the landing page */
-  closeFile: () => set({ 
-    fileLoaded: false, 
-    metadata: null, 
-    fileName: '', 
-    fileNames: [], 
-    timeSeries: [],
-    initialMaskData: null,
-    initialClassNames: null,
-    pinnedSpectra: [],
-    rois: [],
-    currentBand: 0,
-    currentFrame: 0,
-    selectedPixel: null,
-    annotationMode: 'view'
-  }),
+  closeFile: () => {
+    // Clear undo stacks when closing
+    undoStack.length = 0
+    redoStack.length = 0
+    return set({ 
+      fileLoaded: false, 
+      metadata: null, 
+      fileName: '', 
+      fileNames: [], 
+      timeSeries: [],
+      initialMaskData: null,
+      initialClassNames: null,
+      pinnedSpectra: [],
+      rois: [],
+      currentBand: 0,
+      currentFrame: 0,
+      selectedPixel: null,
+      annotationMode: 'view',
+      undoCount: 0,
+      redoCount: 0,
+      undoRedoTick: 0,
+      derivedBand: null,
+    })
+  },
 }));
+
+// ---------------------------------------------------------------------------
+// Undo / Redo stacks (kept outside Zustand to avoid reactivity on large arrays)
+// ---------------------------------------------------------------------------
+const MAX_UNDO = 30
+const undoStack = [] // Array of Uint8Array snapshots
+const redoStack = [] // Array of Uint8Array snapshots
+
+/**
+ * Push a snapshot of the current mask onto the undo stack.
+ * Call this BEFORE any mutation (on pointerdown / before stroke).
+ */
+export function pushMaskSnapshot(maskRef) {
+  if (!maskRef?.current) return
+  undoStack.push(new Uint8Array(maskRef.current))
+  if (undoStack.length > MAX_UNDO) undoStack.shift()
+  // Any new stroke invalidates the redo history
+  redoStack.length = 0
+  useAppStore.setState({ undoCount: undoStack.length, redoCount: 0 })
+}
+
+/**
+ * Undo: restore the previous mask snapshot.
+ * Returns true if an undo was performed.
+ */
+export function undoMask(maskRef) {
+  if (!maskRef?.current || undoStack.length === 0) return false
+  // Save current state to redo stack
+  redoStack.push(new Uint8Array(maskRef.current))
+  // Pop and restore
+  const snapshot = undoStack.pop()
+  maskRef.current.set(snapshot)
+  useAppStore.setState(s => ({
+    undoCount: undoStack.length,
+    redoCount: redoStack.length,
+    undoRedoTick: s.undoRedoTick + 1,
+  }))
+  return true
+}
+
+/**
+ * Redo: restore the next mask snapshot from the redo stack.
+ * Returns true if a redo was performed.
+ */
+export function redoMask(maskRef) {
+  if (!maskRef?.current || redoStack.length === 0) return false
+  // Save current state to undo stack
+  undoStack.push(new Uint8Array(maskRef.current))
+  // Pop and restore
+  const snapshot = redoStack.pop()
+  maskRef.current.set(snapshot)
+  useAppStore.setState(s => ({
+    undoCount: undoStack.length,
+    redoCount: redoStack.length,
+    undoRedoTick: s.undoRedoTick + 1,
+  }))
+  return true
+}
 
 export default useAppStore;

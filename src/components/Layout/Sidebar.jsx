@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import useAppStore from '../../stores/useAppStore'
 
 const COLORMAPS = [
@@ -12,7 +13,14 @@ const RGB_PRESETS = {
   'Custom':        null,
 }
 
-export default function Sidebar({ onBatchExportRois }) {
+const BAND_MATH_OPS = [
+  { id: 'normalized_diff', label: '(A−B) / (A+B)', desc: 'Normalized Difference (NDVI-style)' },
+  { id: 'ratio',           label: 'A / B',           desc: 'Simple Ratio' },
+  { id: 'difference',      label: 'A − B',           desc: 'Difference' },
+  { id: 'sum',             label: 'A + B',           desc: 'Sum' },
+]
+
+export default function Sidebar({ onBatchExportRois, onComputeDerivedBand, onComputeClassStats }) {
   const metadata = useAppStore(s => s.metadata)
   const currentBand = useAppStore(s => s.currentBand)
   const setCurrentBand = useAppStore(s => s.setCurrentBand)
@@ -389,6 +397,96 @@ export default function Sidebar({ onBatchExportRois }) {
           </div>
         )}
       </div>
+
+      {/* ─── Band Math / Spectral Indices ─── */}
+      <BandMathSection
+        totalBands={totalBands}
+        wavelengths={wavelengths}
+        onCompute={onComputeDerivedBand}
+      />
+
+      {/* ─── Class Statistics ─── */}
+      {annotationMode !== 'view' && (
+        <div className="sidebar-section">
+          <div className="sidebar-section-title">Class Statistics</div>
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%', fontSize: 'var(--font-sm)', padding: 'var(--space-xs)' }}
+            onClick={() => onComputeClassStats && onComputeClassStats()}
+          >
+            Compute Mean Spectra
+          </button>
+          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: 'var(--space-xs)' }}>
+            Computes mean ± std spectrum for each class and plots on the spectral panel.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BandMathSection({ totalBands, wavelengths, onCompute }) {
+  const [bandA, setBandA] = useState(0)
+  const [bandB, setBandB] = useState(Math.min(1, totalBands - 1))
+  const [operation, setOperation] = useState('normalized_diff')
+  const derivedBand = useAppStore(s => s.derivedBand)
+  const clearDerivedBand = useAppStore(s => s.clearDerivedBand)
+
+  const labelA = wavelengths && wavelengths[bandA] != null ? `${bandA} (${wavelengths[bandA].toFixed(1)} nm)` : String(bandA)
+  const labelB = wavelengths && wavelengths[bandB] != null ? `${bandB} (${wavelengths[bandB].toFixed(1)} nm)` : String(bandB)
+
+  return (
+    <div className="sidebar-section">
+      <div className="sidebar-section-title">Band Math</div>
+
+      <div className="control-row">
+        <span className="control-label">Band A</span>
+        <input
+          type="number" min={0} max={Math.max(totalBands - 1, 0)}
+          value={bandA}
+          onChange={e => setBandA(Math.min(totalBands - 1, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+          style={{ width: '60px', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: 'var(--border-default)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-xs) var(--space-sm)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-sm)' }}
+        />
+      </div>
+      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>{labelA}</div>
+
+      <div className="control-row">
+        <span className="control-label">Band B</span>
+        <input
+          type="number" min={0} max={Math.max(totalBands - 1, 0)}
+          value={bandB}
+          onChange={e => setBandB(Math.min(totalBands - 1, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+          style={{ width: '60px', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: 'var(--border-default)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-xs) var(--space-sm)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-sm)' }}
+        />
+      </div>
+      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>{labelB}</div>
+
+      <div className="control-row">
+        <span className="control-label">Operation</span>
+        <select value={operation} onChange={e => setOperation(e.target.value)}>
+          {BAND_MATH_OPS.map(op => (
+            <option key={op.id} value={op.id}>{op.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <button
+        className="btn btn-primary"
+        style={{ width: '100%', fontSize: 'var(--font-sm)', padding: 'var(--space-xs)', marginTop: 'var(--space-sm)' }}
+        onClick={() => onCompute && onCompute(bandA, bandB, operation)}
+      >
+        Compute
+      </button>
+
+      {derivedBand && (
+        <button
+          className="btn"
+          style={{ width: '100%', fontSize: 'var(--font-sm)', padding: 'var(--space-xs)', marginTop: 'var(--space-xs)', background: 'var(--bg-tertiary)', border: 'var(--border-default)', color: 'var(--text-secondary)', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}
+          onClick={clearDerivedBand}
+        >
+          Clear Derived Band
+        </button>
+      )}
     </div>
   )
 }

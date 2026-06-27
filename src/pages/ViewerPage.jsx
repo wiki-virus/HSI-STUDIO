@@ -35,6 +35,7 @@ export default function ViewerPage({ workerRef }) {
   const [spectrumData, setSpectrumData] = useState(null) // { spectrum, wavelengths, x, y }
   const [pixelValue, setPixelValue] = useState(null)     // float: value at selected pixel
   const [bandStats, setBandStats] = useState(null)       // { min, max, percentile1, percentile99 }
+  const [classStats, setClassStats] = useState(null)     // { classId: { count, mean, std } }
 
   // ─── Refs for large data (never triggers re-render) ───
   const bandImageRef = useRef(null)   // Float32Array: current band image
@@ -212,6 +213,21 @@ export default function ViewerPage({ workerRef }) {
           break
         }
 
+        case 'classStatsResult': {
+          setClassStats(e.data.results)
+          break
+        }
+
+        case 'derivedBandResult': {
+          const { data, stats } = e.data
+          // Re-use bandImageRef for rendering
+          bandImageRef.current = data
+          setBandStats(stats)
+          useAppStore.getState().setDerivedBand({ label: 'Derived Band' })
+          setRenderTick(t => t + 1)
+          break
+        }
+
         default:
           break
       }
@@ -232,14 +248,17 @@ export default function ViewerPage({ workerRef }) {
   }, [workerRef, currentFrame])
 
   // ─────────────────────────────────────────────────────────────
-  // Request new band when currentBand changes
+  // Request new band when currentBand or derivedBand changes
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const worker = workerRef.current
-    if (!worker || viewMode !== 'single') return
+    const derivedBand = useAppStore.getState().derivedBand
+    
+    // If we have a derived band, do not fetch the current band
+    if (!worker || viewMode !== 'single' || derivedBand) return
 
     worker.postMessage({ type: 'extractBand', bandIndex: currentBand, frameIndex: currentFrame })
-  }, [currentBand, viewMode, workerRef, currentFrame])
+  }, [currentBand, viewMode, workerRef, currentFrame, useAppStore(s => s.derivedBand)])
 
   // ─────────────────────────────────────────────────────────────
   // Request RGB composite when rgbBands or viewMode changes
@@ -370,6 +389,7 @@ export default function ViewerPage({ workerRef }) {
     <div className="app-layout">
       <Toolbar
         onSave={() => setShowExportPane(true)} 
+        maskRef={viewerMaskRef}
         onResetCrop={() => {
           if (workerRef.current) {
             workerRef.current.postMessage({ type: 'resetCrop' })
@@ -382,6 +402,22 @@ export default function ViewerPage({ workerRef }) {
           onBatchExportRois={(rois) => {
             if (workerRef.current) {
               workerRef.current.postMessage({ type: 'batchExportRois', rois })
+            }
+          }}
+          onComputeDerivedBand={(bandA, bandB, operation) => {
+            if (workerRef.current) {
+              workerRef.current.postMessage({ type: 'computeDerivedBand', bandA, bandB, operation })
+            }
+          }}
+          onComputeClassStats={() => {
+            if (workerRef.current && viewerMaskRef.current) {
+              const classes = useAppStore.getState().classes
+              const classIds = classes.map(c => c.id)
+              workerRef.current.postMessage({
+                type: 'computeClassStats',
+                mask: viewerMaskRef.current.buffer,
+                classIds,
+              })
             }
           }}
         />
@@ -480,7 +516,7 @@ export default function ViewerPage({ workerRef }) {
                   )}
                 </div>
                 <div className="spectral-panel-content">
-                  <SpectralPlot spectrumData={spectrumData} />
+                  <SpectralPlot spectrumData={spectrumData} classStats={classStats} />
                 </div>
               </div>
             </>

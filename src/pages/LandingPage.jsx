@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { AlertTriangle, FolderUp, UploadCloud, X } from 'lucide-react'
 import useAppStore from '../stores/useAppStore'
+import FeedbackWidget from '../components/Feedback/FeedbackWidget'
 import { parseHeader } from '../lib/enviParser'
 
 export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }) {
@@ -50,6 +51,7 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
     const fileArray = [...accumulatedFilesRef.current, ...Array.from(files)]
     accumulatedFilesRef.current = fileArray
 
+    const hsiprojFile = fileArray.find(f => /\.hsiproj$/i.test(f.name))
     const has = (re) => fileArray.find(f => re.test(f.name))
     const hdrFiles = fileArray.filter(f => /\.hdr$/i.test(f.name))
     const npzFiles = fileArray.filter(f => /\.npz$/i.test(f.name))
@@ -59,7 +61,12 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
     setIsLoading(true)
 
     try {
-      if (hdrFiles.length > 0) {
+      if (hsiprojFile) {
+        onFormatDetected?.('hsiproj')
+        const projectData = await loadHsiproj(hsiprojFile)
+        await initWorkerTimeSeries([projectData])
+        accumulatedFilesRef.current = []
+      } else if (hdrFiles.length > 0) {
         onFormatDetected?.('envi')
         
         // Find matching data files for all HDRs
@@ -107,7 +114,7 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
         accumulatedFilesRef.current = []
       } else {
         accumulatedFilesRef.current = []
-        throw new Error('Unsupported format. Upload ENVI (.hdr + data), NumPy (.npz), TIFF (.tif/.tiff), or CSV (.csv).')
+        throw new Error('Unsupported format. Upload HSI Project (.hsiproj), ENVI (.hdr + data), NumPy (.npz), TIFF (.tif/.tiff), or CSV (.csv).')
       }
     } catch (err) {
       console.error(err)
@@ -297,6 +304,73 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
     return { buffer: dataBuffer, metadata, maskBuffer, fileName: npzFile.name.replace(/\.npz$/i, '') }
   }
 
+  const loadHsiproj = async (hsiprojFile) => {
+    setLoadingStatus('Loading Project Archive...')
+    const { parseNpz } = await import('../lib/npzParser')
+    const buffer = await hsiprojFile.arrayBuffer()
+    
+    // We can use JSZip directly since npzParser doesn't extract JSON strings out of the box
+    // Wait, NPZ parser might fail on .json files. Let's just use JSZip directly here.
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(buffer)
+
+    // 1. Load project.json
+    const projectFile = zip.file('project.json')
+    if (!projectFile) throw new Error('Invalid project file: missing project.json')
+    const projectJson = await projectFile.async('string')
+    const projectState = JSON.parse(projectJson)
+
+    // 2. Load datacube.npy
+    const datacubeFile = zip.file('datacube.npy')
+    if (!datacubeFile) throw new Error('Invalid project file: missing datacube.npy')
+    const datacubeBuffer = await datacubeFile.async('arraybuffer')
+    const { parseNpy } = await import('../lib/npzParser')
+    const { data: datacubeData } = parseNpy(datacubeBuffer)
+
+    // Convert to Float32Array if needed
+    let dataBuffer
+    if (datacubeData instanceof Float32Array) {
+      dataBuffer = datacubeData.buffer
+    } else {
+      const float32 = new Float32Array(datacubeData.length)
+      for (let i = 0; i < datacubeData.length; i++) {
+        float32[i] = datacubeData[i]
+      }
+      dataBuffer = float32.buffer
+    }
+
+    // 3. Load mask.npy (optional)
+    const maskFile = zip.file('mask.npy')
+    let maskBuffer = null
+    if (maskFile) {
+      const mb = await maskFile.async('arraybuffer')
+      const { data: maskData } = parseNpy(mb)
+      maskBuffer = new Uint8Array(maskData.length)
+      for (let i = 0; i < maskData.length; i++) {
+        maskBuffer[i] = maskData[i]
+      }
+    }
+
+    const metadata = {
+      ...projectState.metadata,
+      dataType: 4, // float32
+      dataTypeSize: 4,
+      interleave: 'numpy',
+      shapeOrder: 'BHW',
+      fortranOrder: false,
+      byteOrder: 0,
+      hasMask: !!maskBuffer,
+    }
+
+    return { 
+      buffer: dataBuffer, 
+      metadata, 
+      maskBuffer, 
+      fileName: projectState.filename || hsiprojFile.name.replace(/\.hsiproj$/i, ''),
+      projectState 
+    }
+  }
+
   const loadCSV = async (csvFile) => {
     setLoadingStatus('Parsing CSV...')
     const text = await csvFile.text()
@@ -345,6 +419,34 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
             firstMask,
             firstClassNames
           )
+          
+          // Apply project state if present
+          if (series[0]?.projectState) {
+            const state = useAppStore.getState()
+            const { viewState, annotationState } = series[0].projectState
+            
+            if (viewState) {
+              if (viewState.currentBand !== undefined) state.setCurrentBand(viewState.currentBand)
+              if (viewState.viewMode) state.setViewMode(viewState.viewMode)
+              if (viewState.rgbBands) state.setRGBBands(viewState.rgbBands)
+              if (viewState.contrast) state.setContrast(viewState.contrast)
+              if (viewState.autoStretch !== undefined) state.setAutoStretch(viewState.autoStretch)
+              if (viewState.colormap) state.setColormap(viewState.colormap)
+              if (viewState.zoom !== undefined) state.setZoom(viewState.zoom)
+              if (viewState.panOffset) state.setPanOffset(viewState.panOffset)
+            }
+            if (annotationState) {
+              if (annotationState.classes) {
+                // We need to set the whole classes array.
+                // Assuming there's a setClasses action in the store, but wait, there might not be.
+                // Let's just set the state directly using zustand's setState.
+                useAppStore.setState({ classes: annotationState.classes })
+              }
+              if (annotationState.rois) useAppStore.setState({ rois: annotationState.rois })
+              if (annotationState.maskOpacity !== undefined) state.setMaskOpacity(annotationState.maskOpacity)
+            }
+          }
+          
           resolve()
         } else if (e.data.type === 'error') {
           reject(new Error(e.data.message))
@@ -493,7 +595,8 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
           )}
         </div>
 
-        <div style={{ marginTop: 'var(--space-2xl)', textAlign: 'center' }}>
+        <div style={{ marginTop: 'var(--space-2xl)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-lg)' }}>
+          <FeedbackWidget className="btn btn-ghost btn-sm" label="Request a feature" style={{ opacity: 0.8 }} />
           <a
             href="https://github.com/wiki-virus/HSI-STUDIO"
             target="_blank"

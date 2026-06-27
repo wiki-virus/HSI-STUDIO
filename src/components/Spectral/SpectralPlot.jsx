@@ -10,13 +10,56 @@ import ExportGraphModal from './ExportGraphModal'
  * Props:
  *  - spectrumData: { spectrum: Float32Array, wavelengths: Float32Array, x, y }
  */
-export default function SpectralPlot({ spectrumData }) {
+export default function SpectralPlot({ spectrumData, classStats }) {
   const metadata = useAppStore(s => s.metadata)
   const pinnedSpectra = useAppStore(s => s.pinnedSpectra)
   const currentBand = useAppStore(s => s.currentBand)
+  const classes = useAppStore(s => s.classes)
 
   const plotData = useMemo(() => {
     const traces = []
+
+    const getXValues = (length) => metadata?.wavelengths 
+      ? Array.from(metadata.wavelengths) 
+      : Array.from({ length }, (_, i) => i)
+
+    // Class Statistics (Mean ± Std)
+    if (classStats) {
+      Object.entries(classStats).forEach(([classIdStr, stats]) => {
+        const cid = parseInt(classIdStr, 10)
+        const cls = classes.find(c => c.id === cid)
+        if (!cls || stats.count === 0) return
+        
+        const xValues = getXValues(stats.mean.length)
+        const mean = Array.from(stats.mean)
+        const std = Array.from(stats.std)
+        const upper = mean.map((m, i) => m + std[i])
+        const lower = mean.map((m, i) => m - std[i])
+
+        // Std Dev Fill (transparent area)
+        traces.push({
+          x: [...xValues, ...xValues.slice().reverse()],
+          y: [...upper, ...lower.slice().reverse()],
+          fill: 'toself',
+          fillcolor: `${cls.color}33`, // 20% opacity
+          line: { color: 'transparent' },
+          name: `${cls.name} ±1σ`,
+          showlegend: false,
+          type: 'scatter',
+          hoverinfo: 'skip'
+        })
+
+        // Mean Line
+        traces.push({
+          x: xValues,
+          y: mean,
+          type: 'scatter',
+          mode: 'lines',
+          name: `${cls.name} (n=${stats.count})`,
+          line: { color: cls.color, width: 2 },
+        })
+      })
+    }
 
     // Pinned spectra (faint background lines)
     pinnedSpectra.forEach((pinned, i) => {
@@ -81,7 +124,7 @@ export default function SpectralPlot({ spectrumData }) {
     }
 
     return traces
-  }, [spectrumData, pinnedSpectra, metadata, currentBand])
+  }, [spectrumData, pinnedSpectra, metadata, currentBand, classStats, classes])
 
   const layout = useMemo(() => ({
     autosize: true,

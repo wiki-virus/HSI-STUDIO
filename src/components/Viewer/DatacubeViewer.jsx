@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import useAppStore from '../../stores/useAppStore'
+import { pushMaskSnapshot, undoMask, redoMask } from '../../stores/useAppStore'
 import { WebGLBandRenderer } from './WebGLRenderer'
 
 /**
@@ -359,10 +360,16 @@ export default function DatacubeViewer({
         e.preventDefault()
         isSpaceDownRef.current = true
         if (containerRef.current) containerRef.current.style.cursor = 'grab'
-      } else if (e.key === '[') {
+      } else if (e.key === '[' || e.key === '-') {
         useAppStore.setState(s => ({ brushSize: Math.max(1, s.brushSize - 2) }))
-      } else if (e.key === ']') {
+      } else if (e.key === ']' || e.key === '+' || e.key === '=') {
         useAppStore.setState(s => ({ brushSize: Math.min(100, s.brushSize + 2) }))
+      } else if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault()
+        if (undoMask(externalMaskRef)) redrawMask()
+      } else if ((e.key === 'y' && (e.ctrlKey || e.metaKey)) || (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
+        e.preventDefault()
+        if (redoMask(externalMaskRef)) redrawMask()
       }
     }
     const handleKeyUp = (e) => {
@@ -449,6 +456,8 @@ export default function DatacubeViewer({
     const isAnnotating = annotationMode === 'brush' || annotationMode === 'eraser'
 
     if (isAnnotating) {
+      // Snapshot mask for undo BEFORE any paint mutation
+      pushMaskSnapshot(externalMaskRef)
       // Start painting
       const coords = screenToImage(e.clientX, e.clientY)
       if (coords) {

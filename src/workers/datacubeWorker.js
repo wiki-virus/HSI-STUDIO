@@ -58,6 +58,12 @@ self.onmessage = function (e) {
     case 'magicWand':
       handleMagicWand(e.data);
       break;
+    case 'computeClassStats':
+      handleComputeClassStats(e.data);
+      break;
+    case 'computeDerivedBand':
+      handleComputeDerivedBand(e.data);
+      break;
     default:
       self.postMessage({ type: 'error', message: `Unknown message type: ${type}` });
   }
@@ -686,4 +692,131 @@ function handleMagicWand({ x, y, tolerance, frameIndex = 0 }) {
 
   // Post back the boolean mask
   self.postMessage({ type: 'wandCompleted', mask: outMask }, [outMask.buffer]);
+}
+
+// ---------------------------------------------------------------------------
+// Compute per-class statistics (mean ± std for each band per class)
+// ---------------------------------------------------------------------------
+function handleComputeClassStats({ mask, classIds }) {
+  if (!datacube || !meta) {
+    self.postMessage({ type: 'error', message: 'No datacube loaded' });
+    return;
+  }
+
+  const { samples, lines, bands } = meta;
+  const totalPixels = samples * lines;
+  const maskArr = new Uint8Array(mask);
+
+  // For each classId, compute mean and std per band
+  const results = {};
+
+  for (const classId of classIds) {
+    // Collect pixel indices for this class
+    const pixelIndices = [];
+    for (let i = 0; i < totalPixels; i++) {
+      if (maskArr[i] === classId) pixelIndices.push(i);
+    }
+
+    const count = pixelIndices.length;
+    if (count === 0) {
+      results[classId] = { count: 0, mean: new Float32Array(bands), std: new Float32Array(bands) };
+      continue;
+    }
+
+    const mean = new Float64Array(bands);
+    const m2 = new Float64Array(bands);
+
+    // Single-pass Welford's algorithm per band
+    for (let pi = 0; pi < count; pi++) {
+      const px = pixelIndices[pi];
+      const n = pi + 1;
+      for (let b = 0; b < bands; b++) {
+        const val = datacube[b * totalPixels + px]; // BSQ layout
+        const delta = val - mean[b];
+        mean[b] += delta / n;
+        const delta2 = val - mean[b];
+        m2[b] += delta * delta2;
+      }
+    }
+
+    const std = new Float32Array(bands);
+    const meanF32 = new Float32Array(bands);
+    for (let b = 0; b < bands; b++) {
+      meanF32[b] = mean[b];
+      std[b] = count > 1 ? Math.sqrt(m2[b] / (count - 1)) : 0;
+    }
+
+    results[classId] = { count, mean: meanF32, std };
+  }
+
+  self.postMessage({ type: 'classStatsResult', results });
+}
+
+// ---------------------------------------------------------------------------
+// Compute a derived band from band math (e.g. NDVI)
+// ---------------------------------------------------------------------------
+function handleComputeDerivedBand({ bandA, bandB, operation }) {
+  if (!datacube || !meta) {
+    self.postMessage({ type: 'error', message: 'No datacube loaded' });
+    return;
+  }
+
+  const { samples, lines } = meta;
+  const totalPixels = samples * lines;
+  const result = new Float32Array(totalPixels);
+
+  const aOffset = bandA * totalPixels;
+  const bOffset = bandB * totalPixels;
+
+  switch (operation) {
+    case 'normalized_diff': // (A-B)/(A+B)
+      for (let i = 0; i < totalPixels; i++) {
+        const a = datacube[aOffset + i];
+        const b = datacube[bOffset + i];
+        const sum = a + b;
+        result[i] = sum !== 0 ? (a - b) / sum : 0;
+      }
+      break;
+    case 'ratio': // A/B
+      for (let i = 0; i < totalPixels; i++) {
+        const b = datacube[bOffset + i];
+        result[i] = b !== 0 ? datacube[aOffset + i] / b : 0;
+      }
+      break;
+    case 'difference': // A-B
+      for (let i = 0; i < totalPixels; i++) {
+        result[i] = datacube[aOffset + i] - datacube[bOffset + i];
+      }
+      break;
+    case 'sum': // A+B
+      for (let i = 0; i < totalPixels; i++) {
+        result[i] = datacube[aOffset + i] + datacube[bOffset + i];
+      }
+      break;
+    default:
+      self.postMessage({ type: 'error', message: `Unknown operation: ${operation}` });
+      return;
+  }
+
+  // Compute min/max and percentiles for auto-stretch
+  let min = Infinity, max = -Infinity;
+  const sorted = Float32Array.from(result).sort();
+  const p1Idx = Math.floor(totalPixels * 0.01);
+  const p99Idx = Math.floor(totalPixels * 0.99);
+
+  for (let i = 0; i < totalPixels; i++) {
+    if (result[i] < min) min = result[i];
+    if (result[i] > max) max = result[i];
+  }
+
+  self.postMessage({
+    type: 'derivedBandResult',
+    data: result,
+    stats: {
+      min,
+      max,
+      percentile1: sorted[p1Idx],
+      percentile99: sorted[p99Idx],
+    }
+  }, [result.buffer]);
 }

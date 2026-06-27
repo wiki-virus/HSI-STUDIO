@@ -3,6 +3,7 @@ import { X, Archive, Database, FileSpreadsheet, Image as ImageIcon, PaintBucket,
 import useAppStore from '../../stores/useAppStore'
 
 const EXPORT_FORMATS = [
+  { id: 'hsiproj',   label: 'HSI Studio Project (.hsiproj)', group: 'Project', icon: Archive, desc: 'Saves your current view state, mask, ROIs, and classes. Can be loaded later.' },
   { id: 'npz',       label: 'NumPy Archive (.npz)',      group: 'Full Datacube', icon: Archive, desc: 'Saves full datacube, wavelengths, and mask. (Python compatible)' },
   { id: 'envi',      label: 'ENVI (.hdr + .dat)',        group: 'Full Datacube', icon: Database, desc: 'Standard format for ENVI, MATLAB, and remote sensing tools.' },
   { id: 'csv',       label: 'Pixel-wise Data (.csv)',    group: 'Full Datacube', icon: FileSpreadsheet, desc: 'Exports all pixels + bands. Adds mask Class if present.' },
@@ -51,6 +52,95 @@ export default function ExportPane({
 
     try {
       switch (selectedFormat) {
+        // ─── HSI Studio Project ───
+        case 'hsiproj': {
+          setStatusMsg('Extracting datacube...')
+          const worker = workerRef?.current
+          if (!worker) throw new Error('Worker not available')
+
+          const msg = await new Promise((resolve, reject) => {
+            const handler = (e) => {
+              if (e.data.type === 'datacubeExport') {
+                worker.removeEventListener('message', handler)
+                resolve(e.data)
+              } else if (e.data.type === 'error') {
+                worker.removeEventListener('message', handler)
+                reject(new Error(e.data.message))
+              }
+            }
+            worker.addEventListener('message', handler)
+            worker.postMessage({ type: 'exportDatacube' })
+            setTimeout(() => {
+              worker.removeEventListener('message', handler)
+              reject(new Error('Export timed out'))
+            }, 30000)
+          })
+
+          setStatusMsg('Packaging project...')
+          import('jszip').then(async ({ default: JSZip }) => {
+            const zip = new JSZip()
+            const { createNpyBuffer } = await import('../../lib/npzParser')
+
+            const state = useAppStore.getState()
+            
+            // 1. Save project state (JSON)
+            const projectData = {
+              version: 1,
+              filename: fileName, // To check against loaded datacube
+              metadata: {
+                samples: metadata.samples,
+                lines: metadata.lines,
+                bands: metadata.bands,
+                wavelengths: metadata.wavelengths
+              },
+              viewState: {
+                currentBand,
+                viewMode: state.viewMode,
+                rgbBands: state.rgbBands,
+                contrast: state.contrast,
+                autoStretch: state.autoStretch,
+                colormap: state.colormap,
+                zoom: state.zoom,
+                panOffset: state.panOffset
+              },
+              annotationState: {
+                classes: state.classes,
+                rois: state.rois,
+                maskOpacity: state.maskOpacity
+              }
+            }
+            zip.file('project.json', JSON.stringify(projectData, null, 2))
+
+            // 2. Save datacube (NPY)
+            const datacubeArr = new Float32Array(msg.data)
+            // It's BSQ, so shape is (bands, lines, samples) if we treat it as Python
+            const datacubeNpy = createNpyBuffer(datacubeArr, [metadata.bands, metadata.lines, metadata.samples], '<f4')
+            zip.file('datacube.npy', datacubeNpy)
+
+            // 3. Save mask (NPZ / NPY)
+            const mask = maskRef?.current
+            if (mask && !excludeMasks) {
+              const maskNpy = createNpyBuffer(mask, [metadata.lines, metadata.samples], '|u1')
+              zip.file('mask.npy', maskNpy)
+            }
+
+            setStatusMsg('Compressing project...')
+            const blob = await zip.generateAsync({
+              type: 'blob',
+              compression: 'DEFLATE',
+              compressionOptions: { level: 6 }
+            })
+            triggerDownload(blob, `${baseName}.hsiproj`)
+            setStatusMsg('✓ Project Saved!')
+            setSaving(false)
+            setTimeout(() => onClose(), 1500)
+          }).catch(err => {
+            setStatusMsg(`Error: ${err.message}`)
+            setSaving(false)
+          })
+          return // Async handled in promise, exit early
+        }
+
         // ─── Current View Screenshot ───
         case 'png-view': {
           setStatusMsg('Capturing current view...')
