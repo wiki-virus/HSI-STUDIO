@@ -165,7 +165,7 @@ export default function SpectralPlot({ spectrumData }) {
     triggerPlotlyButton(title)
   }
 
-  if (!spectrumData) {
+  if (!spectrumData && pinnedSpectra.length === 0) {
     return (
       <div className="empty-state">
         <div className="empty-state-icon" style={{ opacity: 0.5 }}>
