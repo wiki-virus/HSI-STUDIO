@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { X, Archive, Database, FileSpreadsheet, Image as ImageIcon, PaintBucket, Layers, FileBox, Download, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { X, Archive, Database, FileSpreadsheet, Image as ImageIcon, PaintBucket, Layers, FileBox, Download, AlertCircle, CheckCircle2, Settings2, ChevronDown } from 'lucide-react'
 import useAppStore from '../../stores/useAppStore'
 
 const EXPORT_FORMATS = [
@@ -25,6 +25,11 @@ export default function ExportPane({
   const [saving, setSaving] = useState(false)
   const [statusMsg, setStatusMsg] = useState('')
   const [excludeMasks, setExcludeMasks] = useState(false)
+
+  // ─── CSV class-column options ───
+  const [showCsvConfig, setShowCsvConfig] = useState(false)
+  const [csvClassFormat, setCsvClassFormat] = useState('id-name') // 'id-name' | 'name'
+  const [defaultClassName, setDefaultClassName] = useState('')
 
   const triggerDownload = useCallback((blob, filename) => {
     const url = URL.createObjectURL(blob)
@@ -238,6 +243,20 @@ export default function ExportPane({
           
           await new Promise(r => setTimeout(r, 50))
           
+          // Class id → name lookup (used for both CSV class formats)
+          const classes = useAppStore.getState().classes
+          const classNameById = {}
+          classes.forEach(c => { classNameById[c.id] = c.name })
+          const bgName = defaultClassName.trim()
+          const nameFor = (id) => {
+            if (id === 0) return bgName
+            return classNameById[id] || `Class ${id}`
+          }
+          const csvEscape = (v) => {
+            const s = String(v ?? '')
+            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+          }
+
           const header = ['Pixel_X', 'Pixel_Y']
           for (let b = 0; b < bands; b++) {
             const wl = metadata.wavelengths ? metadata.wavelengths[b] : `Band_${b+1}`
@@ -254,9 +273,13 @@ export default function ExportPane({
             }
           }
           if (hasMask) {
-            header.push('Class')
+            if (csvClassFormat === 'name') {
+              header.push('Class')
+            } else {
+              header.push('Class', 'Class_Name')
+            }
           }
-          
+
           const chunks = []
           chunks.push(header.join(',') + '\n')
           
@@ -279,7 +302,12 @@ export default function ExportPane({
                  if (b < bands - 1 || hasMask) rowStr += ','
               }
               if (hasMask) {
-                 rowStr += mask[p] || 0
+                 const id = mask[p] || 0
+                 if (csvClassFormat === 'name') {
+                   rowStr += csvEscape(nameFor(id) || String(id))
+                 } else {
+                   rowStr += `${id},${csvEscape(nameFor(id))}`
+                 }
               }
               chunkStr += rowStr + '\n'
             }
@@ -351,7 +379,7 @@ byte order = 0`
     } finally {
       setSaving(false)
     }
-  }, [selectedFormat, metadata, fileName, currentBand, canvasRef, excludeMasks, maskRef, triggerDownload, workerRef])
+  }, [selectedFormat, metadata, fileName, currentBand, canvasRef, excludeMasks, maskRef, triggerDownload, workerRef, csvClassFormat, defaultClassName])
 
   const selectedMeta = EXPORT_FORMATS.find(f => f.id === selectedFormat)
   const SelectedIcon = selectedMeta?.icon || Download
@@ -529,6 +557,114 @@ byte order = 0`
           />
           <span style={{ fontSize: 'var(--font-sm)' }}>Exclude annotations <span style={{ color: 'var(--text-tertiary)' }}>(raw data only)</span></span>
         </label>
+      )}
+
+      {/* ─── CSV class-column configuration ─── */}
+      {selectedFormat === 'csv' && !excludeMasks && (
+        <div style={{
+          border: 'var(--border-subtle)',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: 'var(--space-lg)',
+          overflow: 'hidden',
+        }}>
+          <button
+            onClick={() => setShowCsvConfig(v => !v)}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--bg-tertiary)',
+              border: 'none',
+              color: 'var(--text-primary)',
+              padding: 'var(--space-sm) var(--space-md)',
+              fontSize: 'var(--font-sm)',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+              <Settings2 size={14} style={{ color: 'var(--text-secondary)' }} />
+              Configure class column
+            </span>
+            <ChevronDown
+              size={16}
+              style={{
+                color: 'var(--text-secondary)',
+                transform: showCsvConfig ? 'rotate(180deg)' : 'none',
+                transition: 'transform var(--transition-fast)',
+              }}
+            />
+          </button>
+
+          {showCsvConfig && (
+            <div style={{ padding: 'var(--space-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+              {/* Format choice */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+                {[
+                  { id: 'id-name', label: 'Class id + name', desc: 'Numeric "Class" column plus a "Class_Name" column.' },
+                  { id: 'name', label: 'Class name only', desc: 'Single "Class" column holding the class name.' },
+                ].map(opt => {
+                  const active = csvClassFormat === opt.id
+                  return (
+                    <label
+                      key={opt.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 'var(--space-sm)',
+                        cursor: 'pointer',
+                        background: active ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)',
+                        border: active ? 'var(--border-accent)' : 'var(--border-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: 'var(--space-sm) var(--space-md)',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="csvClassFormat"
+                        checked={active}
+                        onChange={() => setCsvClassFormat(opt.id)}
+                        style={{ accentColor: 'var(--accent-blue)', marginTop: 2, cursor: 'pointer' }}
+                      />
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 'var(--font-sm)', fontWeight: 500 }}>{opt.label}</span>
+                        <span style={{ display: 'block', fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)' }}>{opt.desc}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+
+              {/* Optional default (background) class name */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  fontSize: 'var(--font-xs)',
+                  color: 'var(--text-secondary)',
+                  marginBottom: 'var(--space-xs)',
+                }}>
+                  Default class name <span style={{ color: 'var(--text-tertiary)' }}>(optional, for class 0)</span>
+                </label>
+                <input
+                  type="text"
+                  value={defaultClassName}
+                  onChange={e => setDefaultClassName(e.target.value)}
+                  placeholder="e.g. Background"
+                  style={{
+                    width: '100%',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
+                    border: 'var(--border-default)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: 'var(--space-sm) var(--space-md)',
+                    fontSize: 'var(--font-sm)',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ─── Status ─── */}

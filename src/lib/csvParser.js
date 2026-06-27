@@ -226,10 +226,23 @@ function parseWide(headers, rows) {
   if (columnInfo.labelCol !== null) {
     const m = new Uint8Array(samples * linesCount)
     let hasClass = false
+    // Class column may hold numeric ids ("1") or class names ("Bruise").
+    // Names are mapped to stable sequential ids; '' and '0' are background.
+    const nameToId = new Map()
+    let nextId = 1
     for (let i = 0; i < numPixels; i++) {
-      const v = parseInt(rows[i][columnInfo.labelCol], 10)
-      if (Number.isFinite(v) && v > 0) {
-        m[i] = v
+      const raw = (rows[i][columnInfo.labelCol] ?? '').trim()
+      if (raw === '' || raw === '0') continue
+      const num = Number(raw)
+      let id
+      if (Number.isInteger(num) && num > 0) {
+        id = num
+      } else {
+        if (!nameToId.has(raw)) nameToId.set(raw, nextId++)
+        id = nameToId.get(raw)
+      }
+      if (id > 0 && id < 256) {
+        m[i] = id
         hasClass = true
       }
     }
