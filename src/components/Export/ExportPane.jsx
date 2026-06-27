@@ -570,6 +570,11 @@ byte order = 0`
             cursor: saving ? 'not-allowed' : 'pointer',
           }}
         >
+          <optgroup label="Project">
+            {EXPORT_FORMATS.filter(f => f.group === 'Project').map(f => (
+              <option key={f.id} value={f.id}>{f.label}</option>
+            ))}
+          </optgroup>
           <optgroup label="Full Datacube">
             {EXPORT_FORMATS.filter(f => f.group === 'Full Datacube').map(f => (
               <option key={f.id} value={f.id}>{f.label}</option>
