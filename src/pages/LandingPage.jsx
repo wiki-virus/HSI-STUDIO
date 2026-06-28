@@ -57,6 +57,7 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
     const npzFiles = fileArray.filter(f => /\.npz$/i.test(f.name))
     const csvFile = has(/\.csv$/i)
     const tiffFile = has(/\.tiff?$/i)
+    const imageFile = has(/\.(png|jpe?g|gif|bmp|webp)$/i)
 
     setIsLoading(true)
 
@@ -112,9 +113,13 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
         onFormatDetected?.('tiff')
         await loadTIFF(tiffFile)
         accumulatedFilesRef.current = []
+      } else if (imageFile) {
+        onFormatDetected?.('image')
+        await loadImage(imageFile)
+        accumulatedFilesRef.current = []
       } else {
         accumulatedFilesRef.current = []
-        throw new Error('Unsupported format. Upload HSI Project (.hz), ENVI (.hdr + data), NumPy (.npz), TIFF (.tif/.tiff), or CSV (.csv).')
+        throw new Error('Unsupported format. Upload HSI Project (.hz), ENVI (.hdr + data), NumPy (.npz), TIFF (.tif/.tiff), CSV (.csv), or an image (.png/.jpg).')
       }
     } catch (err) {
       console.error(err)
@@ -388,6 +393,14 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
     await initWorkerTimeSeries(series)
   }
 
+  const loadImage = async (imgFile) => {
+    setLoadingStatus('Decoding image...')
+    const { parseImage } = await import('../lib/imageParser')
+    const { datacube, metadata } = await parseImage(imgFile)
+    const series = [{ buffer: datacube.buffer, metadata, fileName: imgFile.name.replace(/\.(png|jpe?g|gif|bmp|webp)$/i, '') }]
+    await initWorkerTimeSeries(series)
+  }
+
   const initWorkerTimeSeries = async (series) => {
     // Sort series alphabetically by filename
     series.sort((a, b) => a.fileName.localeCompare(b.fileName))
@@ -444,6 +457,13 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
               if (annotationState.rois) useAppStore.setState({ rois: annotationState.rois })
               if (annotationState.maskOpacity !== undefined) state.setMaskOpacity(annotationState.maskOpacity)
             }
+          }
+
+          // Ordinary RGB images: default to true-colour view (R,G,B) instead of
+          // a single grayscale band so the photo shows correctly on load. Set
+          // both atomically so setViewMode's "all-zero" reset can't race.
+          if (series[0]?.metadata?.isRGBImage) {
+            useAppStore.setState({ viewMode: 'rgb', rgbBands: { r: 0, g: 1, b: 2 } })
           }
           
           resolve()
@@ -538,7 +558,7 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".hdr,.dat,.raw,.img,.bil,.bip,.bsq,.npz,.csv,.tif,.tiff,.hz"
+            accept=".hdr,.dat,.raw,.img,.bil,.bip,.bsq,.npz,.csv,.tif,.tiff,.hz,.png,.jpg,.jpeg,.gif,.bmp,.webp"
             onChange={handleFileChange}
             style={{ display: 'none' }}
           />
@@ -580,7 +600,7 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
                 Drop your hyperspectral data here, or click to browse
               </div>
               <div className="dropzone-hint">
-                Upload the .hdr header + data file together, or a single .npz / .tif / .csv file
+                Upload the .hdr header + data file together, or a single .npz / .tif / .csv / image file
               </div>
               <div className="dropzone-formats">
                 <span className="format-badge">ENVI .hdr</span>
@@ -588,6 +608,7 @@ export default function LandingPage({ datacubeRef, workerRef, onFormatDetected }
                 <span className="format-badge">.npz</span>
                 <span className="format-badge">TIFF</span>
                 <span className="format-badge">CSV (beta)</span>
+                <span className="format-badge">PNG / JPG</span>
                 <span className="format-badge">BIL / BIP / BSQ</span>
               </div>
             </>
